@@ -54,7 +54,7 @@ namespace PlaybackPresent
             }
 
             Spectrum.PauseRendering = false;
-            Spectrum.Data = new float[0];
+            Spectrum.Data = Array.Empty<float>();
             Spectrum.InvalidateVisual();
             this.Show();
             await FadeInAnimation.RunAsync(this);
@@ -105,7 +105,7 @@ namespace PlaybackPresent
             await animation.RunAsync(this);
             Spectrum.PauseRendering = true;
             //analyzer.Stop();
-            Spectrum.Data = new float[0];
+            Spectrum.Data = Array.Empty<float>();
             Spectrum.InvalidateVisual();
             DataRate.Text = analyzer.DataRate.ToString();
             RequestAnimationFrame(new Action<TimeSpan>((time) =>
@@ -189,7 +189,7 @@ namespace PlaybackPresent
             else
             {
                Spectrum.PauseRendering = true;
-               Spectrum.Data = new float[0];
+               Spectrum.Data = Array.Empty<float>();
                analyzer.Stop();
                Spectrum.InvalidateVisual();
             }

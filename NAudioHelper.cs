@@ -94,6 +94,7 @@ public sealed class FftAggregator
 
    // smoothing state
    private readonly float[] _lastBars;
+   private readonly float[] _barsBuffer;
 
    // window coefficients (Hann)
    private readonly float[] _window;
@@ -110,6 +111,7 @@ public sealed class FftAggregator
       _sampleRate = sampleRate;
 
       _lastBars = new float[bars];
+      _barsBuffer = new float[bars];
 
       _window = new float[fftSize];
 
@@ -207,30 +209,10 @@ public sealed class FftAggregator
       // Magnitudes (only first half is useful)
       int usefulBins = _fftSize / 2;
 
-      // Map bins to bars (log-ish)
-      var bars = new float[_bars];
-
-      // choose a frequency range that looks good
-      double minFreq = 20;                      // ignore sub-bass rumble
-      double maxFreq = Math.Min(18000, _sampleRate / 2.0);
-
-      int minBin = FreqToBin(minFreq, usefulBins);
-      int maxBin = FreqToBin(maxFreq, usefulBins);
-      if (maxBin <= minBin) maxBin = minBin + 1;
+      var bars = _barsBuffer;
 
       for (int b = 0; b < _bars; b++)
       {
-         // log spacing across bars
-         double t0 = (double)b / _bars;
-         double t1 = (double)(b + 1) / _bars;
-
-         double f0 = minFreq * Math.Pow(maxFreq / minFreq, t0);
-         double f1 = minFreq * Math.Pow(maxFreq / minFreq, t1);
-
-         int bin0 = Math.Clamp(FreqToBin(f0, usefulBins), minBin, maxBin);
-         int bin1 = Math.Clamp(FreqToBin(f1, usefulBins), minBin, maxBin);
-         if (bin1 <= bin0) bin1 = bin0 + 1;
-
          //// take max magnitude in the bin range (looks punchier than average)
          //double maxMag = 0;
          //for (int i = bin0; i < bin1 && i < usefulBins; i++)
@@ -297,13 +279,6 @@ public sealed class FftAggregator
       return bars;
    }
 
-   private int FreqToBin(double freq, int usefulBins)
-   {
-      // Bin frequency resolution: (sampleRate/2) maps to usefulBins
-      double nyquist = _sampleRate / 2.0;
-      double pos = freq / nyquist;
-      return (int)Math.Round(pos * (usefulBins - 1));
-   }
    static (int left, int center, int right)[] BuildLogTriFilters(
     int bars, int sampleRate, int fftSize, double minHz, double maxHz)
    {
