@@ -1,0 +1,89 @@
+<Window xmlns="https://github.com/avaloniaui"
+		  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+		  xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+		  xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+		  mc:Ignorable="d" d:DesignWidth="350" d:DesignHeight="400"
+		  x:Class="PlaybackPresent.PlaybackPresenterSettings"
+		  xmlns:ViewModels="using:PlaybackPresent.ViewModels"
+		  x:DataType="ViewModels:SettingsProps"
+		  xmlns:converters="using:Avalonia.Controls.Converters"
+		  xmlns:local="using:PlaybackPresent"
+		  WindowStartupLocation="CenterOwner"
+		  Width="350" Height="400"
+		  RequestedThemeVariant="Dark"
+		  Title="PlaybackPresenterSettings">
+	<Window.Resources>
+		<converters:EnumToBoolConverter x:Key="EnumToBoolConverter" />
+	</Window.Resources>
+	<Border>
+		<StackPanel>
+			<TextBlock Text="Playback Presenter Settings" FontSize="16" FontWeight="Bold" Margin="0,0,0,10" HorizontalAlignment="Center"/>
+			<TabControl>
+				<TabItem Header="General">
+					<StackPanel Margin="10" Spacing="2">
+						<TextBlock Text="Window Width"/>
+						<Grid ColumnDefinitions="*,auto">
+							<Slider VerticalAlignment="Center" Margin="0 0 5 0" Grid.Column="0" Minimum="100" Maximum="{Binding SliderMaxValue}" Value="{Binding WindowWidth}" TickFrequency="10" IsSnapToTickEnabled="True"/>
+							<NumericUpDown Grid.Column="1" Width="80" Minimum="100" Maximum="{Binding SliderMaxValue}" Value="{Binding WindowWidth}"/>
+						</Grid>
+						<TextBlock Text="Window Height"/>
+						<Grid ColumnDefinitions="*,auto">
+							<Slider VerticalAlignment="Center" Margin="0 0 5 0" Grid.Column="0" Minimum="100" Maximum="{Binding ScreenHeight}" Value="{Binding WindowHeight}" TickFrequency="10" IsSnapToTickEnabled="True"/>
+							<NumericUpDown Grid.Column="1" Width="80" Minimum="100" Maximum="{Binding ScreenHeight}" Value="{Binding WindowHeight}"/>
+						</Grid>
+						<TextBlock Text="Window Position"/>
+						<StackPanel Orientation="Horizontal" Spacing="5">
+							<TextBlock Text="X:" VerticalAlignment="Center"/>
+							<NumericUpDown Minimum="0" Increment="1" Width="120" Maximum="{Binding ScreenWidth}" Value="{Binding WindowPosX}"/>
+							<TextBlock Text="Y:" VerticalAlignment="Center"/>
+							<NumericUpDown Minimum="0" Increment="1"  Width="120" Maximum="{Binding ScreenHeight}" Value="{Binding WindowPosY}"/>
+						</StackPanel>
+						<TextBlock Text="Visiblity Timeout (miliseconds, -1 = off)"/>
+						<NumericUpDown Minimum="-1" Maximum="60000" Value="{Binding VisibilityTimeout}"/>
+						<TextBlock Text="Audio Spectrum Enabled" >
+						</TextBlock>
+						<ToggleSwitch IsChecked="{Binding AudioSpectrumEnabled}"/>
+						<TextBlock Text="Bar Count"/>
+						<Grid ColumnDefinitions="*,auto">
+							<Slider VerticalAlignment="Center" Margin="0 0 5 0" Grid.Column="0" Value="{Binding BarCount}" Minimum="1" Maximum="8192"/>
+							<NumericUpDown Grid.Column="1" Width="80"  Minimum="1" Maximum="8192" Value="{Binding BarCount}"/>
+						</Grid>
+						<TextBlock Text="FFT Size"/>
+						<ComboBox Width="150" ItemsSource="{Binding FFTSizeChoices}" SelectedValue="{Binding FftSize}"></ComboBox>
+					</StackPanel>
+				</TabItem>
+				<TabItem Header="Visuals">
+					<Border>
+						<StackPanel>
+							<StackPanel Orientation="Horizontal" Spacing="10">
+								<TextBlock Text="Spectrum Gradient Type" VerticalAlignment="Center"/>
+								<ComboBox Width="120" ItemsSource="{Binding AllGradientModes}" SelectedItem="{Binding GradientMode}">
+
+								</ComboBox>
+							</StackPanel>
+							<TextBlock Text="Gradient Colors"/>
+							<Grid ColumnDefinitions="*,auto">
+								<ListBox Grid.Column="0" SelectedIndex="{Binding SelectedGradientStopIndex}" ItemsSource="{Binding SpectrumGradientStops}" Height="210" Margin="5">
+									<ListBox.ItemTemplate>
+										<DataTemplate DataType="ViewModels:SpectrumGradientStopListItem">
+											<StackPanel Orientation="Horizontal" Spacing="10">
+												<ColorPicker Width="50" Color="{Binding GradientStopColor}"/>
+												<TextBox Width="100" Text="{Binding ColorHex}" Background="{Binding ColorAsBrush}"/>
+												<NumericUpDown Width="100" Value="{Binding Offset}" Increment="0.1"/>
+											</StackPanel>
+										</DataTemplate>
+									</ListBox.ItemTemplate>
+								</ListBox>
+								<Rectangle Grid.Column="1" HorizontalAlignment="Right" VerticalAlignment="Stretch" Width="20" Fill="{Binding SpectrumBrush}"></Rectangle>
+							</Grid>
+							<StackPanel Orientation="Horizontal" Margin="10 0" Spacing="10">
+								<Button Content="New" Command="{Binding AddSpectrumGradientStopCommand}"/>
+								<Button Content="Delete" Command="{Binding DeleteSelectedGradientStopCommand}"/>
+							</StackPanel>
+						</StackPanel>
+					</Border>
+				</TabItem>
+			</TabControl>
+		</StackPanel>
+	</Border>
+</Window>

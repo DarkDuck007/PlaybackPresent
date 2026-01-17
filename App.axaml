@@ -1,0 +1,34 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="PlaybackPresent.App"
+             xmlns:semi="https://irihi.tech/semi"
+             RequestedThemeVariant="Default">
+    <TrayIcon.Icons>
+    <TrayIcons>
+      <TrayIcon Icon="/Assets/Images/spectrum.ico" 
+                ToolTipText="Avalonia Tray Icon ToolTip">
+        <TrayIcon.Menu>
+          <NativeMenu>
+            <NativeMenuItem Header="Settings">
+              <NativeMenu>
+                <NativeMenuItem Header="Option 1"   />
+                <NativeMenuItem Header="Option 2"   />
+                <NativeMenuItemSeparator />
+                <NativeMenuItem Header="Exit" Click="ExitBtn_Click" />
+              </NativeMenu>
+            </NativeMenuItem>
+          </NativeMenu>
+        </TrayIcon.Menu>
+      </TrayIcon>
+    </TrayIcons>
+  </TrayIcon.Icons>
+             <!-- "Default" ThemeVariant follows system theme variant. "Dark" or "Light" are other available options. -->
+
+    <Application.Styles>
+        <semi:SemiTheme Locale="en-US" />
+               <semi:ColorPickerSemiTheme />
+
+    </Application.Styles>
+
+   
+</Application>
