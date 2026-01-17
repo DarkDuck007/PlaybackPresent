@@ -49,7 +49,7 @@ namespace PlaybackPresent.ViewModels
       private int windowPosY = 100;
 
       [ObservableProperty]
-      private int visibilityTimeout = 3000;
+      private int visibilityTimeout = 2000;
 
       [ObservableProperty]
       private bool audioSpectrumEnabled = true;

@@ -7,7 +7,7 @@
 		  xmlns:ViewModels="using:PlaybackPresent.ViewModels"
 		  x:DataType="ViewModels:SettingsProps"
 		  xmlns:converters="using:Avalonia.Controls.Converters"
-		  xmlns:local="using:PlaybackPresent"
+		  xmlns:local="using:PlaybackPresent" Icon="\Assets\Images\spectrum.ico"
 		  WindowStartupLocation="CenterOwner"
 		  Width="350" Height="400"
 		  RequestedThemeVariant="Dark"
@@ -26,11 +26,13 @@
 							<Slider VerticalAlignment="Center" Margin="0 0 5 0" Grid.Column="0" Minimum="100" Maximum="{Binding SliderMaxValue}" Value="{Binding WindowWidth}" TickFrequency="10" IsSnapToTickEnabled="True"/>
 							<NumericUpDown Grid.Column="1" Width="80" Minimum="100" Maximum="{Binding SliderMaxValue}" Value="{Binding WindowWidth}"/>
 						</Grid>
+						<!--
 						<TextBlock Text="Window Height"/>
 						<Grid ColumnDefinitions="*,auto">
 							<Slider VerticalAlignment="Center" Margin="0 0 5 0" Grid.Column="0" Minimum="100" Maximum="{Binding ScreenHeight}" Value="{Binding WindowHeight}" TickFrequency="10" IsSnapToTickEnabled="True"/>
 							<NumericUpDown Grid.Column="1" Width="80" Minimum="100" Maximum="{Binding ScreenHeight}" Value="{Binding WindowHeight}"/>
 						</Grid>
+						-->
 						<TextBlock Text="Window Position"/>
 						<StackPanel Orientation="Horizontal" Spacing="5">
 							<TextBlock Text="X:" VerticalAlignment="Center"/>

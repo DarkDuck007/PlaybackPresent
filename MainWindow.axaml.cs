@@ -21,6 +21,7 @@ using Windows.Graphics.Imaging;
 using Windows.Media;
 using Windows.Media.Control;
 using Windows.Storage.Streams;
+using static System.Runtime.InteropServices.JavaScript.JSType;
 using Control = Avalonia.Controls.Control;
 
 namespace PlaybackPresent
@@ -42,25 +43,32 @@ namespace PlaybackPresent
       }
       void AudioEndpointVolume_OnVolumeNotification(AudioVolumeNotificationData data)
       {
+         CurrentValue = data.MasterVolume;
+         FadeWindowIn();
+      }
+      public async Task FadeWindowInAsync(bool force = false)
+      {
+         VolBar.Height = CurrentValue * volFullHeight;
+
+         if (this.IsVisible && !force)
+         {
+            RescheduleTimer();
+            return;
+         }
+
+         Spectrum.PauseRendering = false;
+         Spectrum.Data = Array.Empty<float>();
+         Spectrum.InvalidateVisual();
+         this.Show();
+         await FadeInAnimation.RunAsync(this);
+         RescheduleTimer();
+      }
+      public void FadeWindowIn()
+      {
          Dispatcher.UIThread.Post(async () =>
          {
-            CurrentValue = data.MasterVolume;
-            VolBar.Height = CurrentValue * volFullHeight;
-
-            if (this.IsVisible)
-            {
-               RescheduleTimer();
-               return;
-            }
-
-            Spectrum.PauseRendering = false;
-            Spectrum.Data = Array.Empty<float>();
-            Spectrum.InvalidateVisual();
-            this.Show();
-            await FadeInAnimation.RunAsync(this);
-            RescheduleTimer();
+            await FadeWindowInAsync();
          });
-
       }
       protected override void OnUnloaded(RoutedEventArgs e)
       {
@@ -171,12 +179,10 @@ namespace PlaybackPresent
          if (e.PropertyName.Equals(nameof(SettingsProps.WindowPosX)) && VM.SettingsProperties.WindowPosX != Position.X)
          {
             Position = new PixelPoint(VM.SettingsProperties.WindowPosX, Position.Y);
-
          }
          else if (e.PropertyName.Equals(nameof(SettingsProps.WindowPosY)) && VM.SettingsProperties.WindowPosY != Position.Y)
          {
             Position = new PixelPoint(Position.X, VM.SettingsProperties.WindowPosY);
-
          }
          else if (e.PropertyName.Equals(nameof(SettingsProps.AudioSpectrumEnabled)))
          {
@@ -253,6 +259,13 @@ namespace PlaybackPresent
                //Sender_PlaybackInfoChanged(CurrentSession, null);
                CurrentSession.TimelinePropertiesChanged += Sender_TimelinePropertiesChanged;
                //Sender_TimelinePropertiesChanged(CurrentSession, null);
+               if (CurrentSession.GetTimelineProperties().EndTime < TimeSpan.FromSeconds(1))
+               {
+                  Dispatcher.UIThread.Post(() =>
+                  {
+                     MediaTimeLineControl.IsVisible = false;
+                  });
+               }
             }
          }
          catch (Exception ex)
@@ -283,6 +296,7 @@ namespace PlaybackPresent
 
       private async void UpdateMediaProperties()
       {
+         FadeWindowIn();
          if (CurrentMediaProperties == null)
          {
             MediaArtistTxt.Text = "";
@@ -340,33 +354,51 @@ namespace PlaybackPresent
          CurrentPlaybackInfo = sender.GetPlaybackInfo();
          Dispatcher.UIThread.Post(() =>
          {
-            switch (CurrentPlaybackInfo.PlaybackStatus)
-            {
-               case GlobalSystemMediaTransportControlsSessionPlaybackStatus.Closed:
+            var timelineMediaProps = sender.GetTimelineProperties();
+            if (timelineMediaProps is not null)
+               if (timelineMediaProps.EndTime < TimeSpan.FromSeconds(1))
+               {
                   MediaTimeLineControl.IsVisible = false;
-                  break;
-               case GlobalSystemMediaTransportControlsSessionPlaybackStatus.Opened:
-                  MediaTimeLineControl.Value = 0;
-                  MediaTimeLineControl.IsVisible = true;
-                  break;
-               case GlobalSystemMediaTransportControlsSessionPlaybackStatus.Changing:
-                  MediaTimeLineControl.IsVisible = false;
-                  break;
-               case GlobalSystemMediaTransportControlsSessionPlaybackStatus.Stopped:
-                  MediaTimeLineControl.Foreground = Brushes.Gray;
-                  break;
-               case GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing:
-                  MediaTimeLineControl.Foreground = Brushes.Green;
-                  break;
-               case GlobalSystemMediaTransportControlsSessionPlaybackStatus.Paused:
-                  MediaTimeLineControl.Foreground = Brushes.Red;
-                  break;
-               default:
-                  break;
-            }
+               }
+            FadeWindowIn();
+            UpdateTimelineColor();
          });
       }
-
+      private GlobalSystemMediaTransportControlsSessionPlaybackStatus LastPlaybackStatus = GlobalSystemMediaTransportControlsSessionPlaybackStatus.Closed;
+      private void UpdateTimelineColor()
+      {
+         if (CurrentPlaybackInfo is not null)
+         {
+            if (LastPlaybackStatus != CurrentPlaybackInfo.PlaybackStatus)
+            {
+               switch (CurrentPlaybackInfo.PlaybackStatus)
+               {
+                  case GlobalSystemMediaTransportControlsSessionPlaybackStatus.Closed:
+                     MediaTimeLineControl.IsVisible = false;
+                     break;
+                  case GlobalSystemMediaTransportControlsSessionPlaybackStatus.Opened:
+                     MediaTimeLineControl.Value = 0;
+                     MediaTimeLineControl.IsVisible = false;
+                     break;
+                  case GlobalSystemMediaTransportControlsSessionPlaybackStatus.Changing:
+                     MediaTimeLineControl.IsVisible = false;
+                     break;
+                  case GlobalSystemMediaTransportControlsSessionPlaybackStatus.Stopped:
+                     MediaTimeLineControl.Foreground = Brushes.Gray;
+                     break;
+                  case GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing:
+                     MediaTimeLineControl.Foreground = Brushes.Green;
+                     break;
+                  case GlobalSystemMediaTransportControlsSessionPlaybackStatus.Paused:
+                     MediaTimeLineControl.Foreground = Brushes.Red;
+                     break;
+                  default:
+                     break;
+               }
+               LastPlaybackStatus = CurrentPlaybackInfo.PlaybackStatus;
+            }
+         }
+      }
       private void Sender_TimelinePropertiesChanged(GlobalSystemMediaTransportControlsSession sender,
           TimelinePropertiesChangedEventArgs args)
       {
@@ -386,6 +418,8 @@ namespace PlaybackPresent
             double CurrentTimePercent = (TimeLineProps.Position.Ticks * 1000 / TotalTime.Ticks);
             Dispatcher.UIThread.Post(() =>
             {
+               CurrentPlaybackInfo = sender.GetPlaybackInfo();
+               UpdateTimelineColor();
                MediaTimeLineControl.Value = CurrentTimePercent / (double)10;
                MediaTimeLineControl.IsVisible = true;
             });
@@ -542,20 +576,26 @@ namespace PlaybackPresent
          }
          else if (e.GetCurrentPoint(this).Properties.IsRightButtonPressed)
          {
-            if (VM.SettingsProperties.IsSettingsWindowOpen && SettingsWindow is not null)
-            {
-               SettingsWindow.Activate();
-               return;
-            }
-            VM.SettingsProperties.IsSettingsWindowOpen = !VM.SettingsProperties.IsSettingsWindowOpen;
-            SettingsWindow = new(VM.SettingsProperties);
-            SettingsWindow.Show(this);
-            SettingsWindow.Closed += (s, args) =>
-            {
-               VM.SettingsProperties.IsSettingsWindowOpen = false;
-               RescheduleTimer();
-            };
+            OpenSettingsWindow();
          }
+      }
+      public void OpenSettingsWindow()
+      {
+         if (VM.SettingsProperties.IsSettingsWindowOpen && SettingsWindow is not null)
+         {
+            SettingsWindow.Activate();
+            return;
+         }
+         VM.SettingsProperties.IsSettingsWindowOpen = !VM.SettingsProperties.IsSettingsWindowOpen;
+         SettingsWindow = new(VM.SettingsProperties);
+         SettingsWindow.Show(this);
+         SettingsWindow.Closed += SettingsWindow_Closed;
+      }
+
+      private void SettingsWindow_Closed(object? sender, EventArgs e)
+      {
+         VM.SettingsProperties.IsSettingsWindowOpen = false;
+         RescheduleTimer();
       }
 
       private void Grid_PointerReleased(object? sender, Avalonia.Input.PointerReleasedEventArgs e)

@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Data.Core.Plugins;
 using Avalonia.Markup.Xaml;
+using Avalonia.Threading;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace PlaybackPresent
@@ -40,6 +41,22 @@ namespace PlaybackPresent
       {
          if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
          {
+            var window = (desktop.MainWindow as MainWindow);
+            window.Close();
+         }
+      }
+
+      private void SettingsBtn_Click(object? sender, System.EventArgs e)
+      {
+         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
+         {
+            var window = (desktop.MainWindow as MainWindow);
+            Dispatcher.UIThread.Post(async () =>
+            {
+               window.Show();
+               window.OpenSettingsWindow();
+               await window.FadeWindowInAsync(true);
+            });
          }
       }
    }
