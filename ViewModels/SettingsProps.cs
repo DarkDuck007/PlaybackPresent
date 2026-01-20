@@ -18,6 +18,8 @@ namespace PlaybackPresent.ViewModels
 {
    public partial class SettingsProps : BaseViewModel
    {
+      [JsonPropertyName("firstRun")]
+      public bool FirstRun { get; set; } = true;
       [JsonIgnore]
       public bool RunOnStartup
       {

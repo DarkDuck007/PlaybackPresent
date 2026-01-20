@@ -109,12 +109,13 @@ namespace PlaybackPresent
                       VM.SettingsProperties.BarCount = newProps.BarCount;
                       VM.SettingsProperties.VisibilityTimeout = newProps.VisibilityTimeout;
                       VM.SettingsProperties.SpectrumGradientStops.Clear();
-                      VM.SettingsProperties.WindowWidth= newProps.WindowWidth;
-                      VM.SettingsProperties.WindowHeight= newProps.WindowHeight;
+                      VM.SettingsProperties.WindowWidth = newProps.WindowWidth;
+                      VM.SettingsProperties.WindowHeight = newProps.WindowHeight;
                       foreach (var stop in newProps.SpectrumGradientStops)
                       {
                          VM.SettingsProperties.SpectrumGradientStops.Add(stop);
                       }
+                      VM.SettingsProperties.FirstRun= newProps.FirstRun;
                       //// detach old handler, replace, reattach
                       //var old = VM.SettingsProperties;
                       //if (old is not null)
@@ -124,6 +125,14 @@ namespace PlaybackPresent
 
                       //// Reattach handler so MainWindow reacts to changes on the new object
                       //VM.SettingsProperties.PropertyChanged += SettingsProperties_PropertyChanged;
+                   }
+                   if (VM.SettingsProperties.FirstRun)
+                   {
+                      VM.SettingsProperties.SpectrumGradientStops.Clear();
+                      VM.SettingsProperties.SpectrumGradientStops.Add(new SpectrumGradientStopListItem(new GradientStop(Color.FromRgb(255, 0, 255), 0.0)));
+                      VM.SettingsProperties.SpectrumGradientStops.Add(new SpectrumGradientStopListItem(new GradientStop(Color.FromRgb(255, 255, 0), 0.5)));
+                      VM.SettingsProperties.SpectrumGradientStops.Add(new SpectrumGradientStopListItem(new GradientStop(Color.FromRgb(0, 255, 255), 1.0)));
+                      VM.SettingsProperties.FirstRun = false;
                    }
                 }
              }
