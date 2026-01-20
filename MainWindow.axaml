@@ -9,8 +9,8 @@
 		  RequestedThemeVariant="Dark" Topmost="True" x:DataType="ViewModels:MainWindowViewModel"
 		  SystemDecorations="None" Icon="\Assets\Images\spectrum.ico"
 		  Width="{Binding SettingsProperties.WindowWidth}" Height="{Binding SettingsProperties.WindowHeight}"
-		  WindowStartupLocation="Manual" Closing="Window_Closing"
-		  x:Class="PlaybackPresent.MainWindow" Opened="TopLevel_OnOpened"
+		  WindowStartupLocation="Manual" 
+		  x:Class="PlaybackPresent.MainWindow" Opened="TopLevel_OnOpened" Closing="Window_Closing"
 		  Closed="TopLevel_OnClosed" PositionChanged="Window_PositionChanged"
 		  Title="PlaybackPresent">
 	<Window.Resources>

@@ -2,19 +2,79 @@
 using Avalonia.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Microsoft.Win32;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using System.Linq;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading.Tasks;
+using System.Windows.Forms;
 
 namespace PlaybackPresent.ViewModels
 {
    public partial class SettingsProps : BaseViewModel
    {
+      [JsonIgnore]
+      public bool RunOnStartup
+      {
+         get
+         {
+            try
+            {
+               var rk = Registry.CurrentUser.OpenSubKey("SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run", false);
+               if (rk is null)
+                  return false;
+               var value = rk.GetValue("PlaybackPresent") as string;
+               return !string.IsNullOrEmpty(value);
+            }
+            catch (Exception ex)
+            {
+               MessageBox.Show("Failed to load registry: " + ex.Message);
+               return false;
+            }
+         }
+         set
+         {
+            if (value == true)
+            {
+               try
+               {
+                  using (var key = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run", writable: true))
+                  {
+                     if (key == null)
+                        throw new InvalidOperationException("Unable to open registry to set startup entry.");
+                     if (Environment.ProcessPath is null)
+                        throw new InvalidOperationException("Unable to determine application path for startup entry.");
+                     key.SetValue("PlaybackPresent", $"\"{Environment.ProcessPath}\"");
+                  }
+               }
+               catch (Exception ex)
+               {
+                  MessageBox.Show("Failed to add startup entry to registry: " + ex.Message);
+                  value = false;
+                  return;
+               }
+            }
+            else
+            {
+               try
+               {
+                  using (var key = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run", writable: true))
+                  {
+                     key?.DeleteValue("PlaybackPresent", throwOnMissingValue: false);
+                  }
+               }
+               catch
+               {
+                  MessageBox.Show("Failed to remove startup entry from registry.");
+               }
+            }
+         }
+      }
       public void OnPropertyChangedExternal(string? propertyName)
       {
          OnPropertyChanged(propertyName);
@@ -116,7 +176,7 @@ namespace PlaybackPresent.ViewModels
       //};
 
 
-   [JsonIgnore]
+      [JsonIgnore]
       public GradientBrush SpectrumBrush => GetSpectrumGradientBrush();
       public GradientBrush GetSpectrumGradientBrush()
       {

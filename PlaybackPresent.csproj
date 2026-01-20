@@ -5,6 +5,7 @@
     <Nullable>enable</Nullable>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+    <ApplicationIcon>Assets\Images\spectrum.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>
@@ -31,5 +32,9 @@
     <None Remove="Assets\Images\spectrum.ico" />
     <AvaloniaResource Include="Assets\Images\music_icon.svg" />
     <AvaloniaResource Include="Assets\Images\spectrum.ico" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="Assets\Images\spectrum.ico" />
   </ItemGroup>
 </Project>

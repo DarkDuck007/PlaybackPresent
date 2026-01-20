@@ -2,20 +2,20 @@
 		  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
 		  xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
 		  xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-		  mc:Ignorable="d" d:DesignWidth="350" d:DesignHeight="400"
+		  mc:Ignorable="d" d:DesignWidth="350" d:DesignHeight="430"
 		  x:Class="PlaybackPresent.PlaybackPresenterSettings"
 		  xmlns:ViewModels="using:PlaybackPresent.ViewModels"
 		  x:DataType="ViewModels:SettingsProps"
 		  xmlns:converters="using:Avalonia.Controls.Converters"
 		  xmlns:local="using:PlaybackPresent" Icon="\Assets\Images\spectrum.ico"
 		  WindowStartupLocation="CenterOwner"
-		  Width="350" Height="400"
+		  Width="350" Height="430"
 		  RequestedThemeVariant="Dark"
 		  Title="PlaybackPresenterSettings">
 	<Window.Resources>
-		<converters:EnumToBoolConverter x:Key="EnumToBoolConverter" />
+		<converters:EnumToBoolConverter x:Key="EnumToBoolConverter"/>
 	</Window.Resources>
-	<Border>
+	<ScrollViewer>
 		<StackPanel>
 			<TextBlock Text="Playback Presenter Settings" FontSize="16" FontWeight="Bold" Margin="0,0,0,10" HorizontalAlignment="Center"/>
 			<TabControl>
@@ -52,6 +52,11 @@
 						</Grid>
 						<TextBlock Text="FFT Size"/>
 						<ComboBox Width="150" ItemsSource="{Binding FFTSizeChoices}" SelectedValue="{Binding FftSize}"></ComboBox>
+
+						<StackPanel Orientation="Horizontal" Spacing="5">
+							<TextBlock Text="Run on startup" VerticalAlignment="Center"/>
+							<CheckBox IsChecked="{Binding RunOnStartup}" VerticalAlignment="Center"/>
+						</StackPanel>
 					</StackPanel>
 				</TabItem>
 				<TabItem Header="Visuals">
@@ -87,5 +92,5 @@
 				</TabItem>
 			</TabControl>
 		</StackPanel>
-	</Border>
+	</ScrollViewer>
 </Window>
