@@ -28,7 +28,7 @@ namespace PlaybackPresent
          var services = collection.BuildServiceProvider();
 
          //var vm = services.GetRequiredService<MainViewModel>();
-
+         
          if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
          {
             desktop.MainWindow = new MainWindow();

@@ -13,6 +13,8 @@ using System.Diagnostics.Eventing.Reader;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
@@ -21,14 +23,13 @@ using Windows.Graphics.Imaging;
 using Windows.Media;
 using Windows.Media.Control;
 using Windows.Storage.Streams;
-using static System.Runtime.InteropServices.JavaScript.JSType;
 using Control = Avalonia.Controls.Control;
 
 namespace PlaybackPresent
 {
    public partial class MainWindow : Window
    {
-      MainWindowViewModel VM = new();
+      MainWindowViewModel VM;
       private static MMDeviceEnumerator enumer = new MMDeviceEnumerator();
       private MMDevice dev = enumer.GetDefaultAudioEndpoint(DataFlow.Render, Role.Console);
       private double volFullHeight = 0;
@@ -75,12 +76,71 @@ namespace PlaybackPresent
          //base.OnUnloaded(e);
          //analyzer.Stop();
       }
-      protected override void OnLoaded(RoutedEventArgs e)
+
+      // Use a dedicated async loader so you can attach handlers to the new instance
+
+
+      protected override async void OnLoaded(RoutedEventArgs e)
       {
-         //base.OnLoaded(e);
-         //if(analyzer is not null)
-         //   analyzer.Start();
+         base.OnLoaded(e);
+
+         // Fire-and-forget loader (do not block UI). If you prefer to await, make this async.
+         Dispatcher.UIThread.Post(async () =>
+          {
+             try
+             {
+                if (File.Exists("config.json"))
+                {
+                   using var fs = File.OpenRead("config.json");
+                   var options = new JsonSerializerOptions(JsonSerializerDefaults.Web)
+                   {
+                      PropertyNameCaseInsensitive = true
+                   };
+                   options.Converters.Add(new JsonStringEnumConverter()); // allow enum strings
+                                                                          // SpectrumGradientStopListItem has its own [JsonConverter], so no extra converter required for it.
+
+                   var newProps = JsonSerializer.Deserialize<SettingsProps>(fs, options);
+                   if (newProps is not null)
+                   {
+                      VM.SettingsProperties.WindowPosX = newProps.WindowPosX;
+                      VM.SettingsProperties.WindowPosY = newProps.WindowPosY;
+                      VM.SettingsProperties.AudioSpectrumEnabled = newProps.AudioSpectrumEnabled;
+                      VM.SettingsProperties.FftSize = newProps.FftSize;
+                      VM.SettingsProperties.BarCount = newProps.BarCount;
+                      VM.SettingsProperties.VisibilityTimeout = newProps.VisibilityTimeout;
+                      VM.SettingsProperties.SpectrumGradientStops.Clear();
+                      VM.SettingsProperties.WindowWidth= newProps.WindowWidth;
+                      VM.SettingsProperties.WindowHeight= newProps.WindowHeight;
+                      foreach (var stop in newProps.SpectrumGradientStops)
+                      {
+                         VM.SettingsProperties.SpectrumGradientStops.Add(stop);
+                      }
+                      //// detach old handler, replace, reattach
+                      //var old = VM.SettingsProperties;
+                      //if (old is not null)
+                      //   old.PropertyChanged -= SettingsProperties_PropertyChanged;
+
+                      //VM.SettingsProperties = newProps;
+
+                      //// Reattach handler so MainWindow reacts to changes on the new object
+                      //VM.SettingsProperties.PropertyChanged += SettingsProperties_PropertyChanged;
+                   }
+                }
+             }
+             catch (Exception ex)
+             {
+                Debug.WriteLine("Failed to load config.json: " + ex.Message);
+                // keep defaults (VM.SettingsProperties already set in ViewModel)
+             }
+             finally
+             {
+                // Ensure DataContext and UI are refreshed
+                this.DataContext = VM;
+                VM.SettingsProperties.OnPropertyChangedExternal(null);
+             }
+          });
       }
+
       protected override void OnOpened(EventArgs e)
       {
          base.OnOpened(e);
@@ -127,9 +187,12 @@ namespace PlaybackPresent
             }));
          });
       }
-      public MainWindow()
+      public MainWindow(MainWindowViewModel? ViewModel = null)
       {
          InitializeComponent();
+         if (ViewModel is null)
+            ViewModel = new MainWindowViewModel();
+         this.VM = ViewModel;
          HideTimer = new(async _ =>
          {
             if (VM.SettingsProperties.IsSettingsWindowOpen || this.IsPointerOver)
@@ -176,6 +239,25 @@ namespace PlaybackPresent
 
       private void SettingsProperties_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
       {
+         if (e.PropertyName == null)
+         {
+            Position = new PixelPoint(VM.SettingsProperties.WindowPosX, VM.SettingsProperties.WindowPosY);
+            if (VM.SettingsProperties.AudioSpectrumEnabled)
+            {
+               Spectrum.PauseRendering = false;
+               analyzer.Start();
+
+            }
+            else
+            {
+               Spectrum.PauseRendering = true;
+               Spectrum.Data = Array.Empty<float>();
+               analyzer.Stop();
+               Spectrum.InvalidateVisual();
+            }
+            analyzer.SetNewFftAggregator(VM.SettingsProperties.FftSize, VM.SettingsProperties.BarCount);
+            return;
+         }
          if (e.PropertyName.Equals(nameof(SettingsProps.WindowPosX)) && VM.SettingsProperties.WindowPosX != Position.X)
          {
             Position = new PixelPoint(VM.SettingsProperties.WindowPosX, Position.Y);
@@ -620,6 +702,37 @@ namespace PlaybackPresent
             VM.SettingsProperties.WindowPosX = Position.X;
          if (!VM.SettingsProperties.WindowPosY.Equals(Position.Y))
             VM.SettingsProperties.WindowPosY = Position.Y;
+      }
+
+      private async void LoadAsync(object? sender, RoutedEventArgs e)
+      {
+
+      }
+
+      // Save helper that uses the matching options used to load
+      private async Task SaveSettingsAsync()
+      {
+         try
+         {
+            using var fs = File.Create("config.json");
+            var options = new JsonSerializerOptions
+            {
+               WriteIndented = true
+            };
+            options.Converters.Add(new JsonStringEnumConverter());
+            await JsonSerializer.SerializeAsync(fs, VM.SettingsProperties, options);
+            await fs.FlushAsync();
+         }
+         catch (Exception ex)
+         {
+            MessageBox.Show(ex.Message);
+         }
+      }
+
+      private async void Window_Closing(object? sender, WindowClosingEventArgs e)
+      {
+         // ensure we save with the same options used for reading
+         await SaveSettingsAsync();
       }
    }
 }

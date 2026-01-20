@@ -181,7 +181,7 @@ public sealed class FftAggregator
          else
          {
             // You can add 24/32-bit PCM support if needed
-            throw new NotSupportedException($"PCM {format.BitsPerSample}-bit not implemented in this snippet.");
+            throw new NotSupportedException($"PCM {format.BitsPerSample}-bit not implemented.");
          }
       }
       else
