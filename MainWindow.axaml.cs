@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Animation;
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
@@ -115,7 +116,7 @@ namespace PlaybackPresent
                       {
                          VM.SettingsProperties.SpectrumGradientStops.Add(stop);
                       }
-                      VM.SettingsProperties.FirstRun= newProps.FirstRun;
+                      VM.SettingsProperties.FirstRun = newProps.FirstRun;
                       //// detach old handler, replace, reattach
                       //var old = VM.SettingsProperties;
                       //if (old is not null)
@@ -126,14 +127,15 @@ namespace PlaybackPresent
                       //// Reattach handler so MainWindow reacts to changes on the new object
                       //VM.SettingsProperties.PropertyChanged += SettingsProperties_PropertyChanged;
                    }
-                   if (VM.SettingsProperties.FirstRun)
-                   {
-                      VM.SettingsProperties.SpectrumGradientStops.Clear();
-                      VM.SettingsProperties.SpectrumGradientStops.Add(new SpectrumGradientStopListItem(new GradientStop(Color.FromRgb(255, 0, 255), 0.0)));
-                      VM.SettingsProperties.SpectrumGradientStops.Add(new SpectrumGradientStopListItem(new GradientStop(Color.FromRgb(255, 255, 0), 0.5)));
-                      VM.SettingsProperties.SpectrumGradientStops.Add(new SpectrumGradientStopListItem(new GradientStop(Color.FromRgb(0, 255, 255), 1.0)));
-                      VM.SettingsProperties.FirstRun = false;
-                   }
+                   
+                }
+                if (VM.SettingsProperties.FirstRun)
+                {
+                   VM.SettingsProperties.SpectrumGradientStops.Clear();
+                   VM.SettingsProperties.SpectrumGradientStops.Add(new SpectrumGradientStopListItem(new GradientStop(Color.FromRgb(255, 0, 255), 0.0)));
+                   VM.SettingsProperties.SpectrumGradientStops.Add(new SpectrumGradientStopListItem(new GradientStop(Color.FromRgb(255, 255, 0), 0.5)));
+                   VM.SettingsProperties.SpectrumGradientStops.Add(new SpectrumGradientStopListItem(new GradientStop(Color.FromRgb(0, 255, 255), 1.0)));
+                   VM.SettingsProperties.FirstRun = false;
                 }
              }
              catch (Exception ex)
@@ -196,12 +198,11 @@ namespace PlaybackPresent
             }));
          });
       }
-      public MainWindow(MainWindowViewModel? ViewModel = null)
+      public MainWindow()
       {
          InitializeComponent();
-         if (ViewModel is null)
-            ViewModel = new MainWindowViewModel();
-         this.VM = ViewModel;
+
+         this.VM = new MainWindowViewModel();
          HideTimer = new(async _ =>
          {
             if (VM.SettingsProperties.IsSettingsWindowOpen || this.IsPointerOver)

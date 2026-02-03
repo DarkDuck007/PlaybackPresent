@@ -5,6 +5,7 @@
       <map>
         <entry key="App.axaml" value="PlaybackPresent.csproj" />
         <entry key="MainWindow.axaml" value="PlaybackPresent.csproj" />
+        <entry key="PlaybackPresenterSettings.axaml" value="PlaybackPresent.csproj" />
       </map>
     </option>
   </component>

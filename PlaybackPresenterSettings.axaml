@@ -8,7 +8,7 @@
 		  x:DataType="ViewModels:SettingsProps"
 		  xmlns:converters="using:Avalonia.Controls.Converters"
 		  xmlns:local="using:PlaybackPresent" Icon="\Assets\Images\spectrum.ico"
-		  WindowStartupLocation="CenterOwner"
+		  WindowStartupLocation="CenterScreen"
 		  Width="350" Height="430"
 		  RequestedThemeVariant="Dark"
 		  Title="PlaybackPresenterSettings">
