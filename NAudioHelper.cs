@@ -18,7 +18,7 @@ public sealed class LoopbackFftAnalyzer : IDisposable
 {
    int DataCount = 0;
    public int DataRate { get; private set; } = 0;
-   private readonly WasapiLoopbackCapture _capture;
+   private WasapiLoopbackCapture _capture;
    DateTime LastDataTime = DateTime.Now;
 
    private FftAggregator _fftLeft;
@@ -37,27 +37,20 @@ public sealed class LoopbackFftAnalyzer : IDisposable
       // Start();
    }
    public LoopbackFftAnalyzer(int fftSize = 2048, int bars = 32)
+      : this(null, fftSize, bars)
    {
-      _capture = new WasapiLoopbackCapture(); // default render device
+   }
+
+   public LoopbackFftAnalyzer(MMDevice? device, int fftSize = 2048, int bars = 32)
+   {
+      _capture = device is null
+         ? new WasapiLoopbackCapture()
+         : new WasapiLoopbackCapture(device);
+
       _fftLeft = new FftAggregator(fftSize, bars, _capture.WaveFormat.SampleRate);
       _fftRight = new FftAggregator(fftSize, bars, _capture.WaveFormat.SampleRate);
 
-      _capture.DataAvailable += (s, e) =>
-      {
-         if (PauseUpdates)
-            return;
-         if ((DateTime.Now - LastDataTime) > TimeSpan.FromSeconds(1))
-         {
-            DataRate = (int)(DataCount * (1 / (DateTime.Now - LastDataTime).TotalSeconds));
-            LastDataTime = DateTime.Now;
-            DataCount = 0;
-         }
-         DataCount++;
-         // e.Buffer is PCM in WaveFormat of capture
-         var (leftBars, rightBars) = AddSamplesStereo(e.Buffer, 0, e.BytesRecorded, _capture.WaveFormat);
-         if (leftBars != null && rightBars != null)
-            SpectrumFrame?.Invoke(leftBars, rightBars);
-      };
+      AttachDataAvailableHandler();
    }
 
 
@@ -79,6 +72,35 @@ public sealed class LoopbackFftAnalyzer : IDisposable
    {
       Stop();
       _capture.Dispose();
+   }
+
+   public void Reset()
+   {
+      _fftLeft.Reset();
+      _fftRight.Reset();
+      DataCount = 0;
+      DataRate = 0;
+      LastDataTime = DateTime.Now;
+   }
+
+   private void AttachDataAvailableHandler()
+   {
+      _capture.DataAvailable += (s, e) =>
+      {
+         if (PauseUpdates)
+            return;
+         if ((DateTime.Now - LastDataTime) > TimeSpan.FromSeconds(1))
+         {
+            DataRate = (int)(DataCount * (1 / (DateTime.Now - LastDataTime).TotalSeconds));
+            LastDataTime = DateTime.Now;
+            DataCount = 0;
+         }
+         DataCount++;
+         // e.Buffer is PCM in WaveFormat of capture
+         var (leftBars, rightBars) = AddSamplesStereo(e.Buffer, 0, e.BytesRecorded, _capture.WaveFormat);
+         if (leftBars != null && rightBars != null)
+            SpectrumFrame?.Invoke(leftBars, rightBars);
+      };
    }
 
    private (float[]? left, float[]? right) AddSamplesStereo(byte[] buffer, int offset, int count, WaveFormat format)
@@ -323,6 +345,14 @@ public sealed class FftAggregator
       }
 
       return bars;
+   }
+
+   public void Reset()
+   {
+      _fftPos = 0;
+      Array.Clear(_fftBuffer, 0, _fftBuffer.Length);
+      Array.Clear(_lastBars, 0, _lastBars.Length);
+      Array.Clear(_barsBuffer, 0, _barsBuffer.Length);
    }
 
    static (int left, int center, int right)[] BuildLogTriFilters(

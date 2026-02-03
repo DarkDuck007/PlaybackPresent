@@ -7,6 +7,7 @@ using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Threading;
 using NAudio.CoreAudioApi;
+using NAudio.CoreAudioApi.Interfaces;
 using PlaybackPresent.ViewModels;
 using System;
 using System.Diagnostics;
@@ -32,12 +33,15 @@ namespace PlaybackPresent
    {
       MainWindowViewModel VM;
       private static MMDeviceEnumerator enumer = new MMDeviceEnumerator();
+      private readonly DeviceNotificationClient _deviceNotificationClient;
       private MMDevice dev = enumer.GetDefaultAudioEndpoint(DataFlow.Render, Role.Console);
       private double volFullHeight = 0;
       PlaybackPresenterSettings SettingsWindow;
       LoopbackFftAnalyzer analyzer;
       System.Threading.Timer HideTimer;
       Animation FadeInAnimation;
+      private bool _captureRunning;
+      private DispatcherTimer? _spectrumFadeTimer;
 
       void RescheduleTimer()
       {
@@ -58,12 +62,14 @@ namespace PlaybackPresent
             return;
          }
 
+         _spectrumFadeTimer?.Stop();
+         EnsureSpectrumBuffers(VM.SettingsProperties.BarCount);
+         ClearSpectrumBuffers();
          Spectrum.PauseRendering = false;
-         Spectrum.LeftData = Array.Empty<float>();
-         Spectrum.RightData = Array.Empty<float>();
          Spectrum.InvalidateVisual();
          this.Show();
          await FadeInAnimation.RunAsync(this);
+         StartCaptureIfEnabled();
          RescheduleTimer();
       }
       public void FadeWindowIn()
@@ -72,6 +78,84 @@ namespace PlaybackPresent
          {
             await FadeWindowInAsync();
          });
+      }
+
+      private void EnsureSpectrumBuffers(int bars)
+      {
+         if (bars <= 0)
+            return;
+
+         if (Spectrum.LeftData.Length != bars)
+            Spectrum.LeftData = new float[bars];
+         if (Spectrum.RightData.Length != bars)
+            Spectrum.RightData = new float[bars];
+      }
+
+      private void ClearSpectrumBuffers()
+      {
+         Array.Clear(Spectrum.LeftData, 0, Spectrum.LeftData.Length);
+         Array.Clear(Spectrum.RightData, 0, Spectrum.RightData.Length);
+      }
+
+      private void StartCaptureIfEnabled()
+      {
+         if (!VM.SettingsProperties.AudioSpectrumEnabled || !this.IsVisible)
+            return;
+
+         if (analyzer is null || _captureRunning)
+            return;
+
+         analyzer.Reset();
+         analyzer.Start();
+         _captureRunning = true;
+         Spectrum.PauseRendering = false;
+      }
+
+      private void StopCapture()
+      {
+         if (analyzer is null || !_captureRunning)
+            return;
+
+         analyzer.Stop();
+         _captureRunning = false;
+      }
+
+      private void StartSpectrumFadeOut(Action onComplete)
+      {
+         _spectrumFadeTimer?.Stop();
+
+         if (Spectrum.LeftData.Length == 0 || Spectrum.RightData.Length == 0)
+         {
+            onComplete();
+            return;
+         }
+
+         const double decay = 0.7;
+         const int frames = 8;
+         int remaining = frames;
+
+         _spectrumFadeTimer = new DispatcherTimer
+         {
+            Interval = TimeSpan.FromMilliseconds(16)
+         };
+
+         _spectrumFadeTimer.Tick += (_, __) =>
+         {
+            for (int i = 0; i < Spectrum.LeftData.Length; i++)
+               Spectrum.LeftData[i] = (float)(Spectrum.LeftData[i] * decay);
+            for (int i = 0; i < Spectrum.RightData.Length; i++)
+               Spectrum.RightData[i] = (float)(Spectrum.RightData[i] * decay);
+
+            Spectrum.InvalidateVisual();
+            remaining--;
+            if (remaining <= 0)
+            {
+               _spectrumFadeTimer?.Stop();
+               onComplete();
+            }
+         };
+
+         _spectrumFadeTimer.Start();
       }
       protected override void OnUnloaded(RoutedEventArgs e)
       {
@@ -181,13 +265,16 @@ namespace PlaybackPresent
       {
          Dispatcher.UIThread.Post(async () =>
          {
+            StopCapture();
+            StartSpectrumFadeOut(() =>
+            {
+               Spectrum.PauseRendering = true;
+               ClearSpectrumBuffers();
+               Spectrum.InvalidateVisual();
+            });
+
             var animation = (Animation)this.Resources["FadeOut"];
             await animation.RunAsync(this);
-            Spectrum.PauseRendering = true;
-            //analyzer.Stop();
-            Spectrum.LeftData = Array.Empty<float>();
-            Spectrum.RightData = Array.Empty<float>();
-            Spectrum.InvalidateVisual();
             DataRate.Text = analyzer.DataRate.ToString();
             RequestAnimationFrame(new Action<TimeSpan>((time) =>
             {
@@ -205,6 +292,8 @@ namespace PlaybackPresent
          InitializeComponent();
 
          this.VM = new MainWindowViewModel();
+         _deviceNotificationClient = new DeviceNotificationClient(OnDefaultRenderDeviceChanged);
+         enumer.RegisterEndpointNotificationCallback(_deviceNotificationClient);
          HideTimer = new(async _ =>
          {
             if (VM.SettingsProperties.IsSettingsWindowOpen || this.IsPointerOver)
@@ -249,6 +338,52 @@ namespace PlaybackPresent
          //})
       }
 
+      private void OnDefaultRenderDeviceChanged()
+      {
+         Dispatcher.UIThread.Post(SwitchToDefaultRenderDevice);
+      }
+
+      private void SwitchToDefaultRenderDevice()
+      {
+         MMDevice newDev;
+         try
+         {
+            newDev = enumer.GetDefaultAudioEndpoint(DataFlow.Render, Role.Console);
+         }
+         catch
+         {
+            return;
+         }
+
+         if (dev is not null && dev.ID == newDev.ID)
+            return;
+
+         try
+         {
+            dev.AudioEndpointVolume.OnVolumeNotification -= AudioEndpointVolume_OnVolumeNotification;
+            dev.Dispose();
+         }
+         catch
+         {
+            // ignore device teardown errors
+         }
+
+         dev = newDev;
+         dev.AudioEndpointVolume.OnVolumeNotification += AudioEndpointVolume_OnVolumeNotification;
+         CurrentValue = dev.AudioEndpointVolume.MasterVolumeLevelScalar;
+         VolBar.Height = CurrentValue * volFullHeight;
+
+         if (analyzer is not null)
+         {
+            analyzer.Dispose();
+            analyzer = new LoopbackFftAnalyzer(dev, VM.SettingsProperties.FftSize, VM.SettingsProperties.BarCount);
+            analyzer.SpectrumFrame = Analyzer_SpectrumFrame;
+            analyzer.Reset();
+            _captureRunning = false;
+            StartCaptureIfEnabled();
+         }
+      }
+
       private void SettingsProperties_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
       {
          if (e.PropertyName == null)
@@ -256,19 +391,22 @@ namespace PlaybackPresent
             Position = new PixelPoint(VM.SettingsProperties.WindowPosX, VM.SettingsProperties.WindowPosY);
             if (VM.SettingsProperties.AudioSpectrumEnabled)
             {
+               EnsureSpectrumBuffers(VM.SettingsProperties.BarCount);
+               ClearSpectrumBuffers();
                Spectrum.PauseRendering = false;
-               analyzer.Start();
+               StartCaptureIfEnabled();
 
             }
             else
             {
                Spectrum.PauseRendering = true;
-               Spectrum.LeftData = Array.Empty<float>();
-               Spectrum.RightData = Array.Empty<float>();
-               analyzer.Stop();
+               StopCapture();
+               ClearSpectrumBuffers();
                Spectrum.InvalidateVisual();
             }
             analyzer.SetNewFftAggregator(VM.SettingsProperties.FftSize, VM.SettingsProperties.BarCount);
+            EnsureSpectrumBuffers(VM.SettingsProperties.BarCount);
+            analyzer.Reset();
             return;
          }
          if (e.PropertyName.Equals(nameof(SettingsProps.WindowPosX)) && VM.SettingsProperties.WindowPosX != Position.X)
@@ -283,22 +421,27 @@ namespace PlaybackPresent
          {
             if (VM.SettingsProperties.AudioSpectrumEnabled)
             {
+               EnsureSpectrumBuffers(VM.SettingsProperties.BarCount);
+               ClearSpectrumBuffers();
                Spectrum.PauseRendering = false;
-               analyzer.Start();
+               StartCaptureIfEnabled();
 
             }
             else
             {
                Spectrum.PauseRendering = true;
-               Spectrum.LeftData = Array.Empty<float>();
-               Spectrum.RightData = Array.Empty<float>();
-               analyzer.Stop();
+               StopCapture();
+               ClearSpectrumBuffers();
                Spectrum.InvalidateVisual();
             }
          }
          else if (e.PropertyName.Equals(nameof(SettingsProps.FftSize)) || e.PropertyName.Equals(nameof(SettingsProps.BarCount)))
          {
             analyzer.SetNewFftAggregator(VM.SettingsProperties.FftSize, VM.SettingsProperties.BarCount);
+            EnsureSpectrumBuffers(VM.SettingsProperties.BarCount);
+            analyzer.Reset();
+            ClearSpectrumBuffers();
+            Spectrum.InvalidateVisual();
          }
       }
 
@@ -571,7 +714,17 @@ namespace PlaybackPresent
          //double value = Min + normalized * (Max - Min);
 
          CurrentValue = normalized;
-         dev.AudioEndpointVolume.MasterVolumeLevelScalar = (float)CurrentValue;
+         if (dev is not null)
+         {
+            try
+            {
+               dev.AudioEndpointVolume.MasterVolumeLevelScalar = (float)CurrentValue;
+            }
+            catch
+            {
+               // ignore device switch races
+            }
+         }
 
          VolBar.Height = volFullHeight * normalized;
       }
@@ -594,12 +747,14 @@ namespace PlaybackPresent
                   throw;
                }
             });
-            analyzer = new LoopbackFftAnalyzer(fftSize: VM.SettingsProperties.FftSize, bars: VM.SettingsProperties.BarCount);
+            analyzer = new LoopbackFftAnalyzer(dev, fftSize: VM.SettingsProperties.FftSize, bars: VM.SettingsProperties.BarCount);
             analyzer.SpectrumFrame = Analyzer_SpectrumFrame;
 
          }
-         analyzer.Start();
-         Spectrum.PauseRendering = false;
+         EnsureSpectrumBuffers(VM.SettingsProperties.BarCount);
+         ClearSpectrumBuffers();
+         StartCaptureIfEnabled();
+         Spectrum.PauseRendering = !VM.SettingsProperties.AudioSpectrumEnabled;
 
       }
 
@@ -617,6 +772,7 @@ namespace PlaybackPresent
       private void TopLevel_OnClosed(object? sender, EventArgs e)
       {
          dev.AudioEndpointVolume.OnVolumeNotification -= AudioEndpointVolume_OnVolumeNotification;
+         enumer.UnregisterEndpointNotificationCallback(_deviceNotificationClient);
       }
 
       public static async Task<Bitmap?> LoadThumbnailViaTranscodeAsync(IRandomAccessStreamReference? thumbRef)
@@ -705,7 +861,17 @@ namespace PlaybackPresent
          CurrentValue = Math.Max(Math.Min((e.Delta.Y / 25f) + CurrentValue, 1), 0);
 
          VolBar.Height = volFullHeight * CurrentValue;
-         dev.AudioEndpointVolume.MasterVolumeLevelScalar = (float)CurrentValue;
+         if (dev is not null)
+         {
+            try
+            {
+               dev.AudioEndpointVolume.MasterVolumeLevelScalar = (float)CurrentValue;
+            }
+            catch
+            {
+               // ignore device switch races
+            }
+         }
 
       }
 
@@ -748,6 +914,27 @@ namespace PlaybackPresent
       {
          // ensure we save with the same options used for reading
          await SaveSettingsAsync();
+      }
+
+      private sealed class DeviceNotificationClient : IMMNotificationClient
+      {
+         private readonly Action _onDefaultRenderChanged;
+
+         public DeviceNotificationClient(Action onDefaultRenderChanged)
+         {
+            _onDefaultRenderChanged = onDefaultRenderChanged;
+         }
+
+         public void OnDefaultDeviceChanged(DataFlow flow, Role role, string defaultDeviceId)
+         {
+            if (flow == DataFlow.Render && role == Role.Console)
+               _onDefaultRenderChanged();
+         }
+
+         public void OnDeviceAdded(string pwstrDeviceId) { }
+         public void OnDeviceRemoved(string deviceId) { }
+         public void OnDeviceStateChanged(string deviceId, DeviceState newState) { }
+         public void OnPropertyValueChanged(string pwstrDeviceId, PropertyKey key) { }
       }
    }
 }
