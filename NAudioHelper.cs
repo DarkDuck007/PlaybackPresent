@@ -21,23 +21,26 @@ public sealed class LoopbackFftAnalyzer : IDisposable
    private readonly WasapiLoopbackCapture _capture;
    DateTime LastDataTime = DateTime.Now;
 
-   private FftAggregator _fft;
+   private FftAggregator _fftLeft;
+   private FftAggregator _fftRight;
 
-   public Action<float[]>? SpectrumFrame; // bars 0..1
+   public Action<float[], float[]>? SpectrumFrame; // left/right bars 0..1
 
    bool PauseUpdates = false;
    public void SetNewFftAggregator(int fftSize = 2048, int bars = 32)
    {
       //Stop();
       PauseUpdates = true;
-      _fft = new FftAggregator(fftSize, bars, _capture.WaveFormat.SampleRate);
+      _fftLeft = new FftAggregator(fftSize, bars, _capture.WaveFormat.SampleRate);
+      _fftRight = new FftAggregator(fftSize, bars, _capture.WaveFormat.SampleRate);
       PauseUpdates = false;
       // Start();
    }
    public LoopbackFftAnalyzer(int fftSize = 2048, int bars = 32)
    {
       _capture = new WasapiLoopbackCapture(); // default render device
-      _fft = new FftAggregator(fftSize, bars, _capture.WaveFormat.SampleRate);
+      _fftLeft = new FftAggregator(fftSize, bars, _capture.WaveFormat.SampleRate);
+      _fftRight = new FftAggregator(fftSize, bars, _capture.WaveFormat.SampleRate);
 
       _capture.DataAvailable += (s, e) =>
       {
@@ -51,9 +54,9 @@ public sealed class LoopbackFftAnalyzer : IDisposable
          }
          DataCount++;
          // e.Buffer is PCM in WaveFormat of capture
-         var barsArr = _fft.AddSamples(e.Buffer, 0, e.BytesRecorded, _capture.WaveFormat);
-         if (barsArr != null)
-            SpectrumFrame?.Invoke(barsArr);
+         var (leftBars, rightBars) = AddSamplesStereo(e.Buffer, 0, e.BytesRecorded, _capture.WaveFormat);
+         if (leftBars != null && rightBars != null)
+            SpectrumFrame?.Invoke(leftBars, rightBars);
       };
    }
 
@@ -76,6 +79,51 @@ public sealed class LoopbackFftAnalyzer : IDisposable
    {
       Stop();
       _capture.Dispose();
+   }
+
+   private (float[]? left, float[]? right) AddSamplesStereo(byte[] buffer, int offset, int count, WaveFormat format)
+   {
+      int channels = format.Channels;
+
+      if (format.Encoding == WaveFormatEncoding.IeeeFloat)
+      {
+         var samples = System.Runtime.InteropServices.MemoryMarshal.Cast<byte, float>(buffer.AsSpan(offset, count));
+         for (int n = 0; n + (channels - 1) < samples.Length; n += channels)
+         {
+            float left = samples[n];
+            float right = channels > 1 ? samples[n + 1] : left;
+
+            var l = _fftLeft.AddSample(left);
+            var r = _fftRight.AddSample(right);
+            if (l != null && r != null) return (l, r);
+         }
+      }
+      else if (format.Encoding == WaveFormatEncoding.Pcm)
+      {
+         if (format.BitsPerSample == 16)
+         {
+            var samples = System.Runtime.InteropServices.MemoryMarshal.Cast<byte, short>(buffer.AsSpan(offset, count));
+            for (int n = 0; n + (channels - 1) < samples.Length; n += channels)
+            {
+               float left = samples[n] / 32768f;
+               float right = channels > 1 ? samples[n + 1] / 32768f : left;
+
+               var l = _fftLeft.AddSample(left);
+               var r = _fftRight.AddSample(right);
+               if (l != null && r != null) return (l, r);
+            }
+         }
+         else
+         {
+            throw new NotSupportedException($"PCM {format.BitsPerSample}-bit not implemented.");
+         }
+      }
+      else
+      {
+         throw new NotSupportedException($"Unsupported encoding: {format.Encoding}");
+      }
+
+      return (null, null);
    }
 }
 
@@ -139,22 +187,21 @@ public sealed class FftAggregator
    {
       // Convert incoming buffer to mono float samples
       // Loopback usually gives IEEE float stereo.
-      int bytesPerSample = format.BitsPerSample / 8;
       int channels = format.Channels;
 
       if (format.Encoding == WaveFormatEncoding.IeeeFloat)
       {
-         int samples = count / 4; // float = 4 bytes
-         for (int n = 0; n < samples; n += channels)
+         var samples = System.Runtime.InteropServices.MemoryMarshal.Cast<byte, float>(buffer.AsSpan(offset, count));
+         for (int n = 0; n + (channels - 1) < samples.Length; n += channels)
          {
             float mono = 0f;
             for (int ch = 0; ch < channels; ch++)
             {
-               mono += BitConverter.ToSingle(buffer, offset + 4 * (n + ch));
+               mono += samples[n + ch];
             }
             mono /= channels;
 
-            var bars = AddMonoSample(mono);
+            var bars = AddSample(mono);
             if (bars != null) return bars;
          }
       }
@@ -163,18 +210,17 @@ public sealed class FftAggregator
          // handle 16-bit PCM common cases
          if (format.BitsPerSample == 16)
          {
-            int samples = count / 2;
-            for (int n = 0; n < samples; n += channels)
+            var samples = System.Runtime.InteropServices.MemoryMarshal.Cast<byte, short>(buffer.AsSpan(offset, count));
+            for (int n = 0; n + (channels - 1) < samples.Length; n += channels)
             {
                float mono = 0f;
                for (int ch = 0; ch < channels; ch++)
                {
-                  short s = BitConverter.ToInt16(buffer, offset + 2 * (n + ch));
-                  mono += s / 32768f;
+                  mono += samples[n + ch] / 32768f;
                }
                mono /= channels;
 
-               var bars = AddMonoSample(mono);
+               var bars = AddSample(mono);
                if (bars != null) return bars;
             }
          }
@@ -192,7 +238,7 @@ public sealed class FftAggregator
       return null;
    }
 
-   private float[]? AddMonoSample(float sample)
+   public float[]? AddSample(float sample)
    {
       // Apply window as we fill (store in Complex.X)
       _fftBuffer[_fftPos].X = sample * _window[_fftPos];

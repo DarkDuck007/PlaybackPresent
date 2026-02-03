@@ -59,7 +59,8 @@ namespace PlaybackPresent
          }
 
          Spectrum.PauseRendering = false;
-         Spectrum.Data = Array.Empty<float>();
+         Spectrum.LeftData = Array.Empty<float>();
+         Spectrum.RightData = Array.Empty<float>();
          Spectrum.InvalidateVisual();
          this.Show();
          await FadeInAnimation.RunAsync(this);
@@ -184,7 +185,8 @@ namespace PlaybackPresent
             await animation.RunAsync(this);
             Spectrum.PauseRendering = true;
             //analyzer.Stop();
-            Spectrum.Data = Array.Empty<float>();
+            Spectrum.LeftData = Array.Empty<float>();
+            Spectrum.RightData = Array.Empty<float>();
             Spectrum.InvalidateVisual();
             DataRate.Text = analyzer.DataRate.ToString();
             RequestAnimationFrame(new Action<TimeSpan>((time) =>
@@ -261,7 +263,8 @@ namespace PlaybackPresent
             else
             {
                Spectrum.PauseRendering = true;
-               Spectrum.Data = Array.Empty<float>();
+               Spectrum.LeftData = Array.Empty<float>();
+               Spectrum.RightData = Array.Empty<float>();
                analyzer.Stop();
                Spectrum.InvalidateVisual();
             }
@@ -287,7 +290,8 @@ namespace PlaybackPresent
             else
             {
                Spectrum.PauseRendering = true;
-               Spectrum.Data = Array.Empty<float>();
+               Spectrum.LeftData = Array.Empty<float>();
+               Spectrum.RightData = Array.Empty<float>();
                analyzer.Stop();
                Spectrum.InvalidateVisual();
             }
@@ -599,11 +603,12 @@ namespace PlaybackPresent
 
       }
 
-      private void Analyzer_SpectrumFrame(float[] bars)
+      private void Analyzer_SpectrumFrame(float[] leftBars, float[] rightBars)
       {
          Avalonia.Threading.Dispatcher.UIThread.Post(() =>
          {
-            Spectrum.Data = bars;
+            Spectrum.LeftData = leftBars;
+            Spectrum.RightData = rightBars;
             Spectrum.InvalidateVisual();
             DataRate.Text = analyzer.DataRate.ToString();
          });

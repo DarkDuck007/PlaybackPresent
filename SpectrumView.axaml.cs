@@ -8,7 +8,8 @@ namespace PlaybackPresent;
 
 public partial class SpectrumView : UserControl
 {
-   public float[] Data { get; set; } = Array.Empty<float>();
+   public float[] LeftData { get; set; } = Array.Empty<float>();
+   public float[] RightData { get; set; } = Array.Empty<float>();
 
    public int BarDistance { get; set; } = 1;
 
@@ -31,14 +32,31 @@ public partial class SpectrumView : UserControl
       if (PauseRendering)
          return;
       var bounds = Bounds;
-      var barWidth = bounds.Width / Data.Length;
+      if (LeftData.Length == 0 || RightData.Length == 0)
+         return;
 
-      for (int i = 0; i < Data.Length; i++)
+      int bars = Math.Min(LeftData.Length, RightData.Length);
+      if (bars == 0)
+         return;
+
+      var halfWidth = bounds.Width / 2.0;
+      var barWidth = halfWidth / bars;
+
+      for (int i = 0; i < bars; i++)
       {
-         var h = bounds.Height * Data[i];
+         var h = bounds.Height * LeftData[i];
          context.FillRectangle(
             BarBrush,
-             new Rect(i * barWidth, bounds.Height - h, barWidth - BarDistance, h));
+            new Rect(i * barWidth, bounds.Height - h, barWidth - BarDistance, h));
+      }
+
+      for (int i = 0; i < bars; i++)
+      {
+         var h = bounds.Height * RightData[i];
+         var x = bounds.Width - (i + 1) * barWidth;
+         context.FillRectangle(
+            BarBrush,
+            new Rect(x, bounds.Height - h, barWidth - BarDistance, h));
       }
    }
 
