@@ -166,6 +166,9 @@ public sealed class FftAggregator
    private readonly float[] _lastBars;
    private readonly float[] _barsBuffer;
 
+   // reusable input buffer (pre-windowed per frame)
+   private readonly float[] _windowed;
+
    // window coefficients (Hann)
    private readonly float[] _window;
 
@@ -182,6 +185,8 @@ public sealed class FftAggregator
 
       _lastBars = new float[bars];
       _barsBuffer = new float[bars];
+
+      _windowed = new float[fftSize];
 
       _window = new float[fftSize];
 
@@ -262,14 +267,19 @@ public sealed class FftAggregator
 
    public float[]? AddSample(float sample)
    {
-      // Apply window as we fill (store in Complex.X)
-      _fftBuffer[_fftPos].X = sample * _window[_fftPos];
-      _fftBuffer[_fftPos].Y = 0;
+      // Collect raw samples, apply window in a batch when the frame is full.
+      _windowed[_fftPos] = sample;
       _fftPos++;
 
       if (_fftPos < _fftSize) return null;
 
       _fftPos = 0;
+
+      for (int i = 0; i < _fftSize; i++)
+      {
+         _fftBuffer[i].X = _windowed[i] * _window[i];
+         _fftBuffer[i].Y = 0;
+      }
 
       // FFT in-place
       FastFourierTransform.FFT(true, _m, _fftBuffer);
@@ -353,6 +363,7 @@ public sealed class FftAggregator
       Array.Clear(_fftBuffer, 0, _fftBuffer.Length);
       Array.Clear(_lastBars, 0, _lastBars.Length);
       Array.Clear(_barsBuffer, 0, _barsBuffer.Length);
+      Array.Clear(_windowed, 0, _windowed.Length);
    }
 
    static (int left, int center, int right)[] BuildLogTriFilters(
