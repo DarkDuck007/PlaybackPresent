@@ -54,23 +54,33 @@ namespace PlaybackPresent
       }
       public async Task FadeWindowInAsync(bool force = false)
       {
-         VolBar.Height = CurrentValue * volFullHeight;
-
-         if (this.IsVisible && !force)
+         try
          {
-            RescheduleTimer();
-            return;
-         }
+            VolBar.Height = CurrentValue * volFullHeight;
 
-         _spectrumFadeTimer?.Stop();
-         EnsureSpectrumBuffers(VM.SettingsProperties.BarCount);
-         ClearSpectrumBuffers();
-         Spectrum.PauseRendering = false;
-         Spectrum.InvalidateVisual();
-         this.Show();
-         await FadeInAnimation.RunAsync(this);
-         StartCaptureIfEnabled();
-         RescheduleTimer();
+            if (this.IsVisible && !force)
+            {
+               RescheduleTimer();
+               return;
+            }
+
+            _spectrumFadeTimer?.Stop();
+            EnsureSpectrumBuffers(VM.SettingsProperties.BarCount);
+            ClearSpectrumBuffers();
+            Spectrum.PauseRendering = false;
+            Spectrum.InvalidateVisual();
+            this.Show();
+            await FadeInAnimation.RunAsync(this);
+            StartCaptureIfEnabled();
+            RescheduleTimer();
+         }
+         catch (Exception ex)
+         {
+#if DEBUG
+            MessageBox.Show(ex.Message, "FadeWindowInAsync Exception");
+#endif
+            Debug.WriteLine(ex);
+         }
       }
       public void FadeWindowIn()
       {
@@ -122,40 +132,50 @@ namespace PlaybackPresent
 
       private void StartSpectrumFadeOut(Action onComplete)
       {
-         _spectrumFadeTimer?.Stop();
-
-         if (Spectrum.LeftData.Length == 0 || Spectrum.RightData.Length == 0)
+         try
          {
-            onComplete();
-            return;
-         }
+            _spectrumFadeTimer?.Stop();
 
-         const double decay = 0.7;
-         const int frames = 8;
-         int remaining = frames;
-
-         _spectrumFadeTimer = new DispatcherTimer
-         {
-            Interval = TimeSpan.FromMilliseconds(16)
-         };
-
-         _spectrumFadeTimer.Tick += (_, __) =>
-         {
-            for (int i = 0; i < Spectrum.LeftData.Length; i++)
-               Spectrum.LeftData[i] = (float)(Spectrum.LeftData[i] * decay);
-            for (int i = 0; i < Spectrum.RightData.Length; i++)
-               Spectrum.RightData[i] = (float)(Spectrum.RightData[i] * decay);
-
-            Spectrum.InvalidateVisual();
-            remaining--;
-            if (remaining <= 0)
+            if (Spectrum.LeftData.Length == 0 || Spectrum.RightData.Length == 0)
             {
-               _spectrumFadeTimer?.Stop();
                onComplete();
+               return;
             }
-         };
 
-         _spectrumFadeTimer.Start();
+            const double decay = 0.7;
+            const int frames = 8;
+            int remaining = frames;
+
+            _spectrumFadeTimer = new DispatcherTimer
+            {
+               Interval = TimeSpan.FromMilliseconds(16)
+            };
+
+            _spectrumFadeTimer.Tick += (_, __) =>
+            {
+               for (int i = 0; i < Spectrum.LeftData.Length; i++)
+                  Spectrum.LeftData[i] = (float)(Spectrum.LeftData[i] * decay);
+               for (int i = 0; i < Spectrum.RightData.Length; i++)
+                  Spectrum.RightData[i] = (float)(Spectrum.RightData[i] * decay);
+
+               Spectrum.InvalidateVisual();
+               remaining--;
+               if (remaining <= 0)
+               {
+                  _spectrumFadeTimer?.Stop();
+                  onComplete();
+               }
+            };
+
+            _spectrumFadeTimer.Start();
+         }
+         catch (Exception ex)
+         {
+#if DEBUG
+            MessageBox.Show(ex.Message, "StartSpectrumFadeOut Exception");
+#endif
+            Debug.WriteLine(ex);
+         }
       }
       protected override void OnUnloaded(RoutedEventArgs e)
       {
@@ -212,7 +232,7 @@ namespace PlaybackPresent
                       //// Reattach handler so MainWindow reacts to changes on the new object
                       //VM.SettingsProperties.PropertyChanged += SettingsProperties_PropertyChanged;
                    }
-                   
+
                 }
                 if (VM.SettingsProperties.FirstRun)
                 {
@@ -265,26 +285,36 @@ namespace PlaybackPresent
       {
          Dispatcher.UIThread.Post(async () =>
          {
-            StopCapture();
-            StartSpectrumFadeOut(() =>
+            try
             {
-               Spectrum.PauseRendering = true;
-               ClearSpectrumBuffers();
-               Spectrum.InvalidateVisual();
-            });
+               StopCapture();
+               StartSpectrumFadeOut(() =>
+               {
+                  Spectrum.PauseRendering = true;
+                  ClearSpectrumBuffers();
+                  Spectrum.InvalidateVisual();
+               });
 
-            var animation = (Animation)this.Resources["FadeOut"];
-            await animation.RunAsync(this);
-            DataRate.Text = analyzer.DataRate.ToString();
-            RequestAnimationFrame(new Action<TimeSpan>((time) =>
-            {
-               Spectrum.InvalidateVisual();
+               var animation = (Animation)this.Resources["FadeOut"];
+               await animation.RunAsync(this);
+               DataRate.Text = analyzer.DataRate.ToString();
                RequestAnimationFrame(new Action<TimeSpan>((time) =>
                {
                   Spectrum.InvalidateVisual();
-                  this.Hide();
+                  RequestAnimationFrame(new Action<TimeSpan>((time) =>
+                  {
+                     Spectrum.InvalidateVisual();
+                     this.Hide();
+                  }));
                }));
-            }));
+            }
+            catch (Exception ex)
+            {
+#if DEBUG
+               MessageBox.Show(ex.Message, "HideWindow Exception");
+#endif
+               Debug.WriteLine(ex);
+            }
          });
       }
       public MainWindow()
@@ -340,7 +370,17 @@ namespace PlaybackPresent
 
       private void OnDefaultRenderDeviceChanged()
       {
-         Dispatcher.UIThread.Post(SwitchToDefaultRenderDevice);
+         try
+         {
+            Dispatcher.UIThread.Post(SwitchToDefaultRenderDevice);
+         }
+         catch (Exception ex)
+         {
+#if DEBUG
+            MessageBox.Show(ex.Message, "OnDefaultRenderDeviceChanged Exception");
+#endif
+            Debug.WriteLine(ex);
+         }
       }
 
       private void SwitchToDefaultRenderDevice()
@@ -530,7 +570,18 @@ namespace PlaybackPresent
           MediaPropertiesChangedEventArgs args)
       {
          CurrentMediaProperties = await sender.TryGetMediaPropertiesAsync();
-         UpdateMediaProperties();
+         try
+         {
+            UpdateMediaProperties();
+
+         }
+         catch (Exception ex)
+         {
+#if DEBUG
+            MessageBox.Show(ex.Message, "CurrentSession_MediaPropertiesChanged Exception");
+#endif
+            Debug.WriteLine(ex);
+         }
       }
 
       private async void UpdateMediaProperties()
@@ -560,7 +611,10 @@ namespace PlaybackPresent
                   }
                   catch (Exception ex)
                   {
+#if DEBUG
                      MessageBox.Show(ex.Message);
+#endif
+                     Debug.WriteLine(ex);
                   }
                });
          }

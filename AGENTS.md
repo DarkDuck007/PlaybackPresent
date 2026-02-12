@@ -7,8 +7,12 @@ Performance optimization ideas (targeting FFT/spectrum GC pressure, not a full c
 - Replace `BitConverter.ToSingle/ToInt16` per-sample with `MemoryMarshal.Cast<byte, float>` / `Span<short>` to avoid per-sample overhead and bounds checks (keeps allocations flat).
 - Avoid resetting `Spectrum.Data` with `new float[0]`; use `Array.Empty<float>()` and keep a single empty array instance.
 - Keep `Spectrum.Data` pointing at a stable buffer and just update its contents; invalidate the control to redraw, but avoid swapping arrays each frame.
+- Reuse a windowed input buffer for FFT frames and apply the window in a batch to avoid per-sample Complex writes.
+- Batch-convert incoming PCM buffers to floats/shorts via `MemoryMarshal.Cast` to keep conversion overhead flat and allocation-free.
 
 Applied so far:
 - `FftAggregator` now reuses a single bars buffer instead of allocating per FFT frame.
 - Spectrum hide/reset uses `Array.Empty<float>()` instead of `new float[0]`.
 - Removed redundant per-frame log bin math in `AddMonoSample` since filters are precomputed.
+- Reuse a per-frame windowed sample buffer and apply the window in a batch when a frame is full.
+- Batch conversion from bytes to floats/shorts using `MemoryMarshal.Cast` in the FFT path.
