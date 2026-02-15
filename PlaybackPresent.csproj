@@ -6,6 +6,13 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
     <ApplicationIcon>Assets\Images\spectrum.ico</ApplicationIcon>
+    <PlatformTarget>AnyCPU</PlatformTarget>
+    <PublishTrimmed>False</PublishTrimmed>
+    <PublishAot>False</PublishAot>
+    <SignAssembly>True</SignAssembly>
+    <AssemblyOriginatorKeyFile>myKey.snk</AssemblyOriginatorKeyFile>
+    <EnforceCodeStyleInBuild>False</EnforceCodeStyleInBuild>
+    <AnalysisLevel>none</AnalysisLevel>
 
   </PropertyGroup>
 

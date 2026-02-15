@@ -1,0 +1,35 @@
+{
+  "firstRun": false,
+  "spectrumGradientStops": [
+    {
+      "colorHex": "FF00FFFF",
+      "offset": 0
+    },
+    {
+      "colorHex": "FFFF00FF",
+      "offset": 0.5
+    },
+    {
+      "colorHex": "00FFFFFF",
+      "offset": 1
+    }
+  ],
+  "GradientMode": "Linear",
+  "ScreenWidth": 4000,
+  "ScreenHeight": 4000,
+  "IsSettingsWindowOpen": false,
+  "WindowWidth": 400,
+  "WindowHeight": 100,
+  "SliderMaxValue": 4000,
+  "SelectedGradientStopIndex": -1,
+  "WindowPosX": 100,
+  "WindowPosY": 100,
+  "VisibilityTimeout": 2000,
+  "AudioSpectrumEnabled": true,
+  "BarCount": 256,
+  "FftSize": 1024,
+  "AddSpectrumGradientStopCommand": {},
+  "DeleteSelectedGradientStopCommand": {},
+  "IsNotBusy": true,
+  "IsBusy": false
+}

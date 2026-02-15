@@ -275,6 +275,7 @@ namespace PlaybackPresent
                 VM.SettingsProperties.OnPropertyChangedExternal(null);
              }
           });
+         RescheduleTimer();
       }
 
       protected override void OnOpened(EventArgs e)

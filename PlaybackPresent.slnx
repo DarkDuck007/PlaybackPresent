@@ -1,5 +1,6 @@
 <Solution>
   <Project Path="../PlaybackPresentSetup/PlaybackPresentSetup.csproj" Id="10d20e87-092f-4972-983b-0bf4dd572e10" />
+  <Project Path="../PlaybackPresent_Setup/PlaybackPresent_Setup.vdproj" Type="Installer" />
   <Project Path="C:/Users/Danial/AppData/Local/Discord/Update.exe">
     <BuildType Project="Release" />
     <Platform Project="x86" />
