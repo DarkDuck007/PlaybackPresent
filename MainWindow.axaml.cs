@@ -86,7 +86,17 @@ namespace PlaybackPresent
       {
          Dispatcher.UIThread.Post(async () =>
          {
-            await FadeWindowInAsync();
+            try
+            {
+               await FadeWindowInAsync();
+            }
+            catch (Exception ex)
+            {
+#if DEBUG
+               MessageBox.Show(ex.Message, "FadeWindowIn Exception");
+#endif
+               Debug.WriteLine(ex);
+            }
          });
       }
 
@@ -109,16 +119,26 @@ namespace PlaybackPresent
 
       private void StartCaptureIfEnabled()
       {
-         if (!VM.SettingsProperties.AudioSpectrumEnabled || !this.IsVisible)
-            return;
+         try
+         {
+            if (!VM.SettingsProperties.AudioSpectrumEnabled || !this.IsVisible)
+               return;
 
-         if (analyzer is null || _captureRunning)
-            return;
+            if (analyzer is null || _captureRunning)
+               return;
 
-         analyzer.Reset();
-         analyzer.Start();
-         _captureRunning = true;
-         Spectrum.PauseRendering = false;
+            analyzer.Reset();
+            analyzer.Start();
+            _captureRunning = true;
+            Spectrum.PauseRendering = false;
+         }
+         catch (Exception ex)
+         {
+#if DEBUG
+            MessageBox.Show(ex.Message, "StartCaptureIfEnabled Exception");
+#endif
+            Debug.WriteLine(ex);
+         }
       }
 
       private void StopCapture()
@@ -831,44 +851,52 @@ namespace PlaybackPresent
 
       public static async Task<Bitmap?> LoadThumbnailViaTranscodeAsync(IRandomAccessStreamReference? thumbRef)
       {
-         if (thumbRef is null) return null;
+         try
+         {
+            if (thumbRef is null) return null;
 
-         using IRandomAccessStream ras = await thumbRef.OpenReadAsync();
-         var decoder = await BitmapDecoder.CreateAsync(ras);
+            using IRandomAccessStream ras = await thumbRef.OpenReadAsync();
+            var decoder = await BitmapDecoder.CreateAsync(ras);
 
-         // Get pixels in a standard format
-         var pixelData = await decoder.GetPixelDataAsync(
-             BitmapPixelFormat.Bgra8,
-             BitmapAlphaMode.Premultiplied,
-             new BitmapTransform(),
-             ExifOrientationMode.IgnoreExifOrientation,
-             ColorManagementMode.DoNotColorManage);
+            // Get pixels in a standard format
+            var pixelData = await decoder.GetPixelDataAsync(
+                BitmapPixelFormat.Bgra8,
+                BitmapAlphaMode.Premultiplied,
+                new BitmapTransform(),
+                ExifOrientationMode.IgnoreExifOrientation,
+                ColorManagementMode.DoNotColorManage);
 
-         byte[] pixels = pixelData.DetachPixelData();
+            byte[] pixels = pixelData.DetachPixelData();
 
-         // Encode into a new PNG in memory
-         using var outStream = new InMemoryRandomAccessStream();
-         var encoder = await BitmapEncoder.CreateAsync(BitmapEncoder.JpegEncoderId, outStream);
+            // Encode into a new PNG in memory
+            using var outStream = new InMemoryRandomAccessStream();
+            var encoder = await BitmapEncoder.CreateAsync(BitmapEncoder.JpegEncoderId, outStream);
 
-         encoder.SetPixelData(
-             BitmapPixelFormat.Bgra8,
-             BitmapAlphaMode.Premultiplied,
-             decoder.PixelWidth,
-             decoder.PixelHeight,
-             96, 96,
-             pixels);
+            encoder.SetPixelData(
+                BitmapPixelFormat.Bgra8,
+                BitmapAlphaMode.Premultiplied,
+                decoder.PixelWidth,
+                decoder.PixelHeight,
+                96, 96,
+                pixels);
 
-         await encoder.FlushAsync();
+            await encoder.FlushAsync();
 
-         // Convert to .NET stream for Avalonia
-         outStream.Seek(0);
-         using var dotnet = outStream.AsStreamForRead();
-         using var ms = new MemoryStream();
-         await dotnet.CopyToAsync(ms);
-         //ms.Position = 0;
-         //await ms.CopyToAsync(File.OpenWrite(@"C:\Users\Danial\Desktop\meaningless.jpg"));
-         ms.Position = 0;
-         return new Bitmap(ms);
+            // Convert to .NET stream for Avalonia
+            outStream.Seek(0);
+            using var dotnet = outStream.AsStreamForRead();
+            using var ms = new MemoryStream();
+            await dotnet.CopyToAsync(ms);
+            //ms.Position = 0;
+            //await ms.CopyToAsync(File.OpenWrite(@"C:\Users\Danial\Desktop\meaningless.jpg"));
+            ms.Position = 0;
+            return new Bitmap(ms);
+         }
+         catch (Exception ex)
+         {
+            Debug.WriteLine(ex.Message, "LoadThumbnailViaTranscodeAsync Exception");
+            return null;
+         }
       }
 
       private void Window_PointerPressed(object? sender, Avalonia.Input.PointerPressedEventArgs e)
