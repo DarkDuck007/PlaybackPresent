@@ -13,6 +13,7 @@
     <AssemblyOriginatorKeyFile>myKey.snk</AssemblyOriginatorKeyFile>
     <EnforceCodeStyleInBuild>False</EnforceCodeStyleInBuild>
     <AnalysisLevel>none</AnalysisLevel>
+    <Platforms>AnyCPU;x64</Platforms>
 
   </PropertyGroup>
 

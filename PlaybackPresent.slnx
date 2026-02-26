@@ -1,6 +1,14 @@
 <Solution>
-  <Project Path="../PlaybackPresentSetup/PlaybackPresentSetup.csproj" Id="10d20e87-092f-4972-983b-0bf4dd572e10" />
-  <Project Path="../PlaybackPresent_Setup/PlaybackPresent_Setup.vdproj" Type="Installer" />
+  <Configurations>
+    <Platform Name="Any CPU" />
+    <Platform Name="x64" />
+  </Configurations>
+  <Project Path="../PlaybackPresentSetup/PlaybackPresentSetup.csproj" Id="10d20e87-092f-4972-983b-0bf4dd572e10">
+    <Platform Solution="*|x64" Project="x64" />
+  </Project>
+  <Project Path="../PlaybackPresent_Setup/PlaybackPresent_Setup.vdproj" Type="Installer">
+    <Build Solution="*|x64" />
+  </Project>
   <Project Path="C:/Users/Danial/AppData/Local/Discord/Update.exe">
     <BuildType Project="Release" />
     <Platform Project="x86" />
@@ -17,5 +25,7 @@
       <Property Name="UseLegacyDebugEngines" Value="No" />
     </Properties>
   </Project>
-  <Project Path="PlaybackPresent.csproj" />
+  <Project Path="PlaybackPresent.csproj">
+    <Platform Solution="*|x64" Project="x64" />
+  </Project>
 </Solution>

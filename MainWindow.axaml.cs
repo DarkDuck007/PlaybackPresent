@@ -22,7 +22,6 @@ using System.Threading.Tasks;
 using System.Windows.Forms;
 using Windows.Devices.PointOfService;
 using Windows.Graphics.Imaging;
-using Windows.Media;
 using Windows.Media.Control;
 using Windows.Storage.Streams;
 using Control = Avalonia.Controls.Control;
@@ -42,6 +41,10 @@ namespace PlaybackPresent
       Animation FadeInAnimation;
       private bool _captureRunning;
       private DispatcherTimer? _spectrumFadeTimer;
+      private MediaSessionWatcher? _mediaWatcher;
+      private CancellationTokenSource? _thumbnailCts;
+      private uint _activeMediaRevision;
+      private IRandomAccessStreamReference? _currentThumbnailRef;
 
       void RescheduleTimer()
       {
@@ -511,237 +514,170 @@ namespace PlaybackPresent
 
       }
 
-      private void UpdatePlaybackInfo()
+      private GlobalSystemMediaTransportControlsSessionPlaybackStatus _lastPlaybackStatus = GlobalSystemMediaTransportControlsSessionPlaybackStatus.Closed;
+
+      private void MediaWatcher_SnapshotChanged(object? sender, MediaSessionSnapshotChangedEventArgs e)
       {
+         Dispatcher.UIThread.Post(() =>
+         {
+            ApplyMediaSnapshot(e.Kind, e.Snapshot);
+         });
       }
 
-      GlobalSystemMediaTransportControlsSessionManager? MediaSessionManager;
-      GlobalSystemMediaTransportControlsSession? CurrentSession;
-      GlobalSystemMediaTransportControlsSessionMediaProperties? CurrentMediaProperties;
-      GlobalSystemMediaTransportControlsSessionPlaybackInfo? CurrentPlaybackInfo;
-
-      private async Task InitializeAsync()
+      private void ApplyMediaSnapshot(MediaSessionSignalKind kind, MediaSessionSnapshot? snapshot)
       {
-         MediaSessionManager = await GlobalSystemMediaTransportControlsSessionManager.RequestAsync();
-         GlobalSystemMediaTransportControlsSession session = MediaSessionManager.GetCurrentSession();
-         if (session != null)
+         var hasNonTimelineSignal = (kind & ~MediaSessionSignalKind.TimelineChanged) != 0;
+         var hasMediaPropsSignal =
+            (kind & (MediaSessionSignalKind.SessionChanged | MediaSessionSignalKind.MediaPropertiesChanged | MediaSessionSignalKind.PlaybackInfoChanged | MediaSessionSignalKind.RefreshRequested)) != 0;
+
+         if (snapshot is null)
          {
-            Gsmtcsm_CurrentSessionChanged(MediaSessionManager, null);
-         }
-
-         MediaSessionManager.CurrentSessionChanged += Gsmtcsm_CurrentSessionChanged;
-      }
-
-      private async void Gsmtcsm_CurrentSessionChanged(GlobalSystemMediaTransportControlsSessionManager sender,
-          CurrentSessionChangedEventArgs args)
-      {
-         if (CurrentSession != null)
-         {
-            CurrentSession.MediaPropertiesChanged -= CurrentSession_MediaPropertiesChanged;
-            CurrentSession.PlaybackInfoChanged -= Sender_PlaybackInfoChanged;
-            CurrentSession.TimelinePropertiesChanged -= Sender_TimelinePropertiesChanged;
-         }
-
-         try
-         {
-            CurrentSession = sender.GetCurrentSession();
-            if (CurrentSession != null)
-            {
-               CurrentMediaProperties = await CurrentSession.TryGetMediaPropertiesAsync();
-               if (CurrentMediaProperties != null)
-               {
-                  CurrentSession_MediaPropertiesChanged(CurrentSession, null);
-               }
-
-               CurrentSession.MediaPropertiesChanged += CurrentSession_MediaPropertiesChanged;
-               //CurrentSession_MediaPropertiesChanged(CurrentSession, null);
-               CurrentSession.PlaybackInfoChanged += Sender_PlaybackInfoChanged;
-               //Sender_PlaybackInfoChanged(CurrentSession, null);
-               CurrentSession.TimelinePropertiesChanged += Sender_TimelinePropertiesChanged;
-               //Sender_TimelinePropertiesChanged(CurrentSession, null);
-               if (CurrentSession.GetTimelineProperties().EndTime < TimeSpan.FromSeconds(1))
-               {
-                  Dispatcher.UIThread.Post(() =>
-                  {
-                     MediaTimeLineControl.IsVisible = false;
-                  });
-               }
-            }
-         }
-         catch (Exception ex)
-         {
-            Debug.WriteLine(ex.Message + Environment.NewLine + ex.StackTrace);
-            if (CurrentSession != null)
-            {
-               CurrentSession.MediaPropertiesChanged -= CurrentSession_MediaPropertiesChanged;
-               CurrentSession.PlaybackInfoChanged -= Sender_PlaybackInfoChanged;
-               CurrentSession.TimelinePropertiesChanged -= Sender_TimelinePropertiesChanged;
-            }
-
-            if (MediaSessionManager != null)
-            {
-               MediaSessionManager.CurrentSessionChanged -= Gsmtcsm_CurrentSessionChanged;
-            }
-
-            await InitializeAsync();
-         }
-      }
-
-      private async void CurrentSession_MediaPropertiesChanged(GlobalSystemMediaTransportControlsSession sender,
-          MediaPropertiesChangedEventArgs args)
-      {
-         CurrentMediaProperties = await sender.TryGetMediaPropertiesAsync();
-         try
-         {
-            UpdateMediaProperties();
-
-         }
-         catch (Exception ex)
-         {
-#if DEBUG
-            MessageBox.Show(ex.Message, "CurrentSession_MediaPropertiesChanged Exception");
-#endif
-            Debug.WriteLine(ex);
-         }
-      }
-
-      private async void UpdateMediaProperties()
-      {
-         FadeWindowIn();
-         if (CurrentMediaProperties == null)
-         {
+            _activeMediaRevision = 0;
+            _currentThumbnailRef = null;
+            _thumbnailCts?.Cancel();
+            _thumbnailCts?.Dispose();
+            _thumbnailCts = null;
             MediaArtistTxt.Text = "";
-            //MediaArtistTxt.Text = "Nothing is being played now";
+            SongNameTxt.Text = "";
+            MediaTimeLineControl.Value = 0;
+            MediaTimeLineControl.IsVisible = false;
+            MediaImageControl.IsVisible = false;
+            MediaImageBackground.IsVisible = true;
+            _lastPlaybackStatus = GlobalSystemMediaTransportControlsSessionPlaybackStatus.Closed;
             return;
          }
 
-         if (!object.ReferenceEquals(CurrentMediaProperties.Thumbnail, null))
-         {
+         if (hasNonTimelineSignal)
+            FadeWindowIn();
 
-            var image = await LoadThumbnailViaTranscodeAsync(CurrentMediaProperties.Thumbnail);
-            if (image != null)
+         _activeMediaRevision = snapshot.Revision;
+
+         if (hasMediaPropsSignal)
+         {
+            MediaArtistTxt.Text = snapshot.Artist ?? "";
+            var title = snapshot.Title ?? "";
+            var titleString = new StringBuilder(title);
+            for (int i = 60; i < titleString.Length; i += 60)
+            {
+               titleString.Insert(i, "\n");
+            }
+            SongNameTxt.Text = titleString.ToString();
+         }
+
+         UpdateTimelineColor(snapshot.PlaybackStatus);
+         UpdateTimeline(snapshot);
+
+         if (!hasMediaPropsSignal)
+            return;
+
+         if (snapshot.Thumbnail is null)
+         {
+            _currentThumbnailRef = null;
+            _thumbnailCts?.Cancel();
+            _thumbnailCts?.Dispose();
+            _thumbnailCts = null;
+            MediaImageControl.IsVisible = false;
+            MediaImageBackground.IsVisible = true;
+            return;
+         }
+
+         if (ReferenceEquals(_currentThumbnailRef, snapshot.Thumbnail))
+            return;
+
+         _currentThumbnailRef = snapshot.Thumbnail;
+         _thumbnailCts?.Cancel();
+         _thumbnailCts?.Dispose();
+         _thumbnailCts = new CancellationTokenSource();
+
+         var token = _thumbnailCts.Token;
+         uint expectedRevision = snapshot.Revision;
+         var thumbRef = snapshot.Thumbnail;
+         _ = Task.Run(async () =>
+         {
+            try
+            {
+               var image = await LoadThumbnailViaTranscodeAsync(thumbRef);
+               if (token.IsCancellationRequested)
+                  return;
+
                Dispatcher.UIThread.Post(() =>
                {
-                  try
-                  {
-                     Avalonia.Media.Imaging.Bitmap ImageSrc = image;
-                     MediaImageControl.IsVisible = true;
-                     MediaImageBackground.IsVisible = false;
-                     MediaImageControl.Source = ImageSrc;
+                  if (token.IsCancellationRequested || _activeMediaRevision != expectedRevision)
+                     return;
 
-                  }
-                  catch (Exception ex)
+                  if (image is null)
                   {
-#if DEBUG
-                     MessageBox.Show(ex.Message);
-#endif
-                     Debug.WriteLine(ex);
+                     MediaImageControl.IsVisible = false;
+                     MediaImageBackground.IsVisible = true;
+                     return;
                   }
+
+                  MediaImageControl.IsVisible = true;
+                  MediaImageBackground.IsVisible = false;
+                  MediaImageControl.Source = image;
                });
-         }
-         else
-         {
-            Dispatcher.UIThread.Post(() =>
-            {
-               MediaImageControl.IsVisible = false;
-               MediaImageBackground.IsVisible = true;
-
-            });
-         }
-
-         Dispatcher.UIThread.Post(() =>
-         {
-            MediaArtistTxt.Text = CurrentMediaProperties.Artist;
-            StringBuilder TitleString = new StringBuilder(CurrentMediaProperties.Title);
-            for (int i = 60; i < TitleString.Length; i += 60)
-            {
-               TitleString.Insert(i, "\n");
             }
-
-            SongNameTxt.Text = TitleString.ToString();
-         });
-      }
-
-      private void Sender_PlaybackInfoChanged(GlobalSystemMediaTransportControlsSession sender,
-          PlaybackInfoChangedEventArgs args)
-      {
-         CurrentPlaybackInfo = sender.GetPlaybackInfo();
-         Dispatcher.UIThread.Post(() =>
-         {
-            var timelineMediaProps = sender.GetTimelineProperties();
-            if (timelineMediaProps is not null)
-               if (timelineMediaProps.EndTime < TimeSpan.FromSeconds(1))
-               {
-                  MediaTimeLineControl.IsVisible = false;
-               }
-            FadeWindowIn();
-            UpdateTimelineColor();
-         });
-      }
-      private GlobalSystemMediaTransportControlsSessionPlaybackStatus LastPlaybackStatus = GlobalSystemMediaTransportControlsSessionPlaybackStatus.Closed;
-      private void UpdateTimelineColor()
-      {
-         if (CurrentPlaybackInfo is not null)
-         {
-            if (LastPlaybackStatus != CurrentPlaybackInfo.PlaybackStatus)
+            catch (Exception ex)
             {
-               switch (CurrentPlaybackInfo.PlaybackStatus)
-               {
-                  case GlobalSystemMediaTransportControlsSessionPlaybackStatus.Closed:
-                     MediaTimeLineControl.IsVisible = false;
-                     break;
-                  case GlobalSystemMediaTransportControlsSessionPlaybackStatus.Opened:
-                     MediaTimeLineControl.Value = 0;
-                     MediaTimeLineControl.IsVisible = false;
-                     break;
-                  case GlobalSystemMediaTransportControlsSessionPlaybackStatus.Changing:
-                     MediaTimeLineControl.IsVisible = false;
-                     break;
-                  case GlobalSystemMediaTransportControlsSessionPlaybackStatus.Stopped:
-                     MediaTimeLineControl.Foreground = Brushes.Gray;
-                     break;
-                  case GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing:
-                     MediaTimeLineControl.Foreground = Brushes.Green;
-                     break;
-                  case GlobalSystemMediaTransportControlsSessionPlaybackStatus.Paused:
-                     MediaTimeLineControl.Foreground = Brushes.Red;
-                     break;
-                  default:
-                     break;
-               }
-               LastPlaybackStatus = CurrentPlaybackInfo.PlaybackStatus;
+               Debug.WriteLine(ex);
             }
-         }
+         }, token);
       }
-      private void Sender_TimelinePropertiesChanged(GlobalSystemMediaTransportControlsSession sender,
-          TimelinePropertiesChangedEventArgs args)
+
+      private void UpdateTimeline(MediaSessionSnapshot snapshot)
       {
-         //Progressbar min=0 max=1000
-         var TimeLineProps = sender.GetTimelineProperties();
-         TimeSpan TotalTime = TimeLineProps.EndTime - TimeLineProps.StartTime;
-         if (TotalTime.Ticks == 0)
+         if (!snapshot.HasTimeline)
          {
-            Dispatcher.UIThread.Post(() =>
-            {
+            MediaTimeLineControl.Value = 0;
+            MediaTimeLineControl.IsVisible = false;
+            return;
+         }
+
+         var total = snapshot.TimelineEnd - snapshot.TimelineStart;
+         if (total.Ticks <= 0)
+         {
+            MediaTimeLineControl.Value = 0;
+            MediaTimeLineControl.IsVisible = false;
+            return;
+         }
+
+         double currentTimePercent = (snapshot.TimelinePosition.Ticks * 1000d / total.Ticks);
+         MediaTimeLineControl.Value = currentTimePercent / 10d;
+         MediaTimeLineControl.IsVisible = true;
+      }
+
+      private void UpdateTimelineColor(GlobalSystemMediaTransportControlsSessionPlaybackStatus playbackStatus)
+      {
+         if (_lastPlaybackStatus == playbackStatus)
+            return;
+
+         switch (playbackStatus)
+         {
+            case GlobalSystemMediaTransportControlsSessionPlaybackStatus.Closed:
+               MediaTimeLineControl.IsVisible = false;
+               break;
+            case GlobalSystemMediaTransportControlsSessionPlaybackStatus.Opened:
                MediaTimeLineControl.Value = 0;
                MediaTimeLineControl.IsVisible = false;
-            });
+               break;
+            case GlobalSystemMediaTransportControlsSessionPlaybackStatus.Changing:
+               MediaTimeLineControl.IsVisible = false;
+               break;
+            case GlobalSystemMediaTransportControlsSessionPlaybackStatus.Stopped:
+               MediaTimeLineControl.Foreground = Brushes.Gray;
+               break;
+            case GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing:
+               MediaTimeLineControl.Foreground = Brushes.Green;
+               break;
+            case GlobalSystemMediaTransportControlsSessionPlaybackStatus.Paused:
+               MediaTimeLineControl.Foreground = Brushes.Red;
+               break;
+            default:
+               break;
          }
-         else
-         {
-            double CurrentTimePercent = (TimeLineProps.Position.Ticks * 1000 / TotalTime.Ticks);
-            Dispatcher.UIThread.Post(() =>
-            {
-               CurrentPlaybackInfo = sender.GetPlaybackInfo();
-               UpdateTimelineColor();
-               MediaTimeLineControl.Value = CurrentTimePercent / (double)10;
-               MediaTimeLineControl.IsVisible = true;
-            });
-            //Debug.WriteLine(CurrentTimePercent);
-         }
-      }
 
-      SystemMediaTransportControls smtc;
+         _lastPlaybackStatus = playbackStatus;
+      }
       private bool _dragging;
 
       private void volBorder_PointerPressed(object? sender, Avalonia.Input.PointerPressedEventArgs e)
@@ -809,19 +745,24 @@ namespace PlaybackPresent
          {
             volFullHeight = VolBorder.Bounds.Height - 3;
             dev.AudioEndpointVolume.OnVolumeNotification += AudioEndpointVolume_OnVolumeNotification;
+
+            _mediaWatcher = new MediaSessionWatcher();
+            _mediaWatcher.SnapshotChanged += MediaWatcher_SnapshotChanged;
             Task.Run(async () =>
             {
                try
                {
-                  await InitializeAsync();
+                  await _mediaWatcher.StartAsync();
                }
                catch (Exception exception)
                {
-                  Console.WriteLine(exception);
+                  Debug.WriteLine(exception);
+#if DEBUG
                   MessageBox.Show(exception.Message, "Failed to initialize media listener.");
-                  throw;
+#endif
                }
             });
+
             analyzer = new LoopbackFftAnalyzer(dev, fftSize: VM.SettingsProperties.FftSize, bars: VM.SettingsProperties.BarCount);
             analyzer.SpectrumFrame = Analyzer_SpectrumFrame;
 
@@ -848,6 +789,13 @@ namespace PlaybackPresent
       {
          dev.AudioEndpointVolume.OnVolumeNotification -= AudioEndpointVolume_OnVolumeNotification;
          enumer.UnregisterEndpointNotificationCallback(_deviceNotificationClient);
+
+         if (_mediaWatcher is not null)
+         {
+            _mediaWatcher.SnapshotChanged -= MediaWatcher_SnapshotChanged;
+            _mediaWatcher.Dispose();
+            _mediaWatcher = null;
+         }
       }
 
       public static async Task<Bitmap?> LoadThumbnailViaTranscodeAsync(IRandomAccessStreamReference? thumbRef)
